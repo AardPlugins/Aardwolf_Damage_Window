@@ -7,11 +7,20 @@
 function OnPluginInstall()
     load_state()
 
+    -- Initialize session start time
+    reset_session()
+
     -- Create combat damage trigger dynamically
     -- Use the correct MUSHclient constants (eOmitFromOutput, eTriggerRegularExpression, eEnabled)
-    local flags = eOmitFromOutput + eTriggerRegularExpression + eEnabled
+    -- eReplace ensures trigger is replaced on reload with updated patterns
+    local flags = eOmitFromOutput + eTriggerRegularExpression + eEnabled + eReplace
     AddTrigger("combat_damage", get_damage_regex(), "",
         flags, -1, 0, "", "track", 0, 100)
+
+    -- Create combat spam trigger dynamically (patterns defined in _init.lua)
+    local spam_flags = eTriggerRegularExpression + eEnabled + eReplace
+    AddTrigger("combat_spam", combat_spam_regex(), "",
+        spam_flags, -1, 0, "", "spam_ignore", 0, 100)
 
     -- Apply echo mode to all triggers
     set_echo_mode(echo_enabled)
@@ -68,11 +77,13 @@ function track(name, line, wc)
 
         if attacker_lower == "your" then
             bucket.given = bucket.given + damage
+            add_to_session("given", damage)
             if debug_enabled then
                 ColourNote("lime", "", string.format("[DEBUG] +%d given (total: %d)", damage, bucket.given))
             end
         elseif defender_lower == "you" then
             bucket.taken = bucket.taken + damage
+            add_to_session("taken", damage)
             if debug_enabled then
                 ColourNote("red", "", string.format("[DEBUG] +%d taken (total: %d)", damage, bucket.taken))
             end
@@ -85,24 +96,40 @@ function track(name, line, wc)
 
     elseif starts_with(name, "death_mob_") then
         bucket.kills = bucket.kills + 1
+        add_to_session("kills", 1)
 
     elseif name == "death_exp" then
         local exp_str = wc[2] or "0"
         for amt in string.gmatch(exp_str, "%d+") do
-            bucket.exp = bucket.exp + (tonumber(amt) or 0)
+            local exp_amt = tonumber(amt) or 0
+            bucket.exp = bucket.exp + exp_amt
+            add_to_session("exp", exp_amt)
         end
 
     elseif name == "death_gold" or name == "death_gold_daily" then
-        bucket.gold = bucket.gold + parse_gold(wc[1])
+        local gold_amt = parse_gold(wc[1])
+        bucket.gold = bucket.gold + gold_amt
+        add_to_session("gold", gold_amt)
 
     elseif name == "death_sacrifice" then
-        bucket.gold = bucket.gold + parse_gold(wc[2])
+        local gold_amt = parse_gold(wc[2])
+        bucket.gold = bucket.gold + gold_amt
+        add_to_session("gold", gold_amt)
 
     elseif name == "death_split" or name == "death_other_split" then
-        bucket.gold = bucket.gold + parse_gold(wc[4])
+        local gold_amt = parse_gold(wc[4])
+        bucket.gold = bucket.gold + gold_amt
+        add_to_session("gold", gold_amt)
 
     elseif name == "death_crumble" then
-        bucket.gold = bucket.gold + parse_gold(wc[2])
+        local gold_amt = parse_gold(wc[2])
+        bucket.gold = bucket.gold + gold_amt
+        add_to_session("gold", gold_amt)
+
+    elseif starts_with(name, "heal_") then
+        local amount = tonumber(wc[1]) or 0
+        bucket.healed = bucket.healed + amount
+        add_to_session("healed", amount)
     end
 
     refresh_display()
@@ -138,7 +165,7 @@ function alias_dt(name, line, wildcards)
         table.insert(parts, word)
     end
 
-    local cmd = parts[1] and parts[1]:lower() or "status"
+    local cmd = parts[1] and parts[1]:lower() or "help"
     table.remove(parts, 1)
 
     if cmd == "help" then
@@ -173,16 +200,16 @@ end
 function cmd_help()
     Message([[@WCommands:@w
 
-  @Ydt                       @w- Show plugin status
+  @Ydt                       @w- Show this help
   @Ydt help                  @w- Show this help
   @Ydt status                @w- Show plugin status
   @Ydt show                  @w- Show tracker window
   @Ydt hide                  @w- Hide tracker window
-  @Ydt echo @w[@Yon@w|@Yoff@w]          - Toggle/set echo mode
+  @Ydt echo @w[@Yon@w|@Yoff@w]         @w- Toggle/set echo mode
   @Ydt reset                 @w- Reset all stats to zero
-  @Ydt rounds @w<@Yn@w>            - Set rounds to track (1-100)
-  @Ydt battlespam @w[@Yon@w|@Yoff@w]   - Toggle combat spam
-  @Ydt debug @w[@Yon@w|@Yoff@w]        - Toggle debug mode
+  @Ydt rounds @w<@Yn@w>            @w- Set rounds to track (1-300)
+  @Ydt battlespam @w[@Yon@w|@Yoff@w]   @w- Toggle combat spam
+  @Ydt debug @w[@Yon@w|@Yoff@w]        @w- Toggle debug mode
   @Ydt reload                @w- Reload plugin]])
 end
 
@@ -191,7 +218,8 @@ function cmd_status()
     local spam_str = battlespam_enabled and "@GYes" or "@RNo"
     local debug_str = debug_enabled and "@GYes" or "@RNo"
     local visible = win and WindowInfo(win, 5) and "@GVisible" or "@RHidden"
-    local totals = get_totals()
+    local rolling = get_totals()
+    local session_time = session_start and os.date("%Y-%m-%d %H:%M:%S", session_start) or "Unknown"
 
     Message(string.format([[@WStatus:@w
 
@@ -201,9 +229,19 @@ function cmd_status()
   @WBattlespam:   @w(%s@w)
   @WDebug:        @w(%s@w)
 
-  @W--- Session Totals ---@w
+  @W--- Last %d Rounds ---@w
   @WGiven:        @G%s@w
   @WTaken:        @R%s@w
+  @WHeals:        @G%s@w
+  @WGold:         @Y%s@w
+  @WExp:          @Y%s@w
+  @WKills:        @Y%s@w
+
+  @W--- Session Totals ---@w
+  @WStarted:      @C%s@w
+  @WGiven:        @G%s@w
+  @WTaken:        @R%s@w
+  @WHeals:        @G%s@w
   @WGold:         @Y%s@w
   @WExp:          @Y%s@w
   @WKills:        @Y%s@w]],
@@ -212,11 +250,20 @@ function cmd_status()
     echo_str,
     spam_str,
     debug_str,
-    format_number(totals.given),
-    format_number(totals.taken),
-    format_number(totals.gold),
-    format_number(totals.exp),
-    format_number(totals.kills)))
+    NUM_BUCKETS,
+    format_number(rolling.given),
+    format_number(rolling.taken),
+    format_number(rolling.healed or 0),
+    format_number(rolling.gold),
+    format_number(rolling.exp),
+    format_number(rolling.kills),
+    session_time,
+    format_number(session_totals.given),
+    format_number(session_totals.taken),
+    format_number(session_totals.healed or 0),
+    format_number(session_totals.gold),
+    format_number(session_totals.exp),
+    format_number(session_totals.kills)))
 end
 
 function cmd_show()
@@ -248,20 +295,21 @@ end
 
 function cmd_reset()
     reset_all_buckets()
+    reset_session()
     refresh_display()
-    ColourNote("yellow", "", "Damage tracker stats reset.")
+    ColourNote("yellow", "", "Damage tracker stats reset (buckets and session).")
 end
 
 function cmd_rounds(n)
     local new_count = tonumber(n)
     if not new_count then
         ColourNote("silver", "", "Current round count: " .. NUM_BUCKETS)
-        ColourNote("silver", "", "Usage: dt rounds <number> (1-100)")
+        ColourNote("silver", "", "Usage: dt rounds <number> (1-300)")
         return
     end
 
     if new_count < 1 then new_count = 1 end
-    if new_count > 100 then new_count = 100 end
+    if new_count > 300 then new_count = 300 end
 
     NUM_BUCKETS = new_count
     reset_all_buckets()
@@ -339,7 +387,8 @@ local tracked_triggers = {
     "death_gold", "death_gold_daily",
     "death_sacrifice",
     "death_split", "death_other_split",
-    "death_crumble"
+    "death_crumble",
+    "heal_magic_touch", "heal_warm_feeling"
 }
 
 function set_echo_mode(enabled)

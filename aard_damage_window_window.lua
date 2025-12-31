@@ -80,6 +80,8 @@ function refresh_display()
     y = y + line_height
     draw_stat_line(x, y, label_width, "Taken:", bucket.taken, bucket.taken > 0 and COLOR_TAKEN or COLOR_TAKEN_ZERO)
     y = y + line_height
+    draw_stat_line(x, y, label_width, "Heals:", bucket.healed or 0, COLOR_VALUE)
+    y = y + line_height
     draw_stat_line(x, y, label_width, "Gold:", bucket.gold, COLOR_VALUE)
     y = y + line_height
     draw_stat_line(x, y, label_width, "XP:", bucket.exp, COLOR_VALUE)
@@ -99,6 +101,8 @@ function refresh_display()
     draw_stat_line(x, y, label_width, "Given:", totals.given, COLOR_GIVEN)
     y = y + line_height
     draw_stat_line(x, y, label_width, "Taken:", totals.taken, totals.taken > 0 and COLOR_TAKEN or COLOR_TAKEN_ZERO)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "Heals:", totals.healed or 0, COLOR_VALUE)
     y = y + line_height
     draw_stat_line(x, y, label_width, "Gold:", totals.gold, COLOR_VALUE)
     y = y + line_height

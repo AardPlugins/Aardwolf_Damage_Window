@@ -27,11 +27,17 @@ lastRefresh = 0
 -- =============================================================================
 -- Bucket System State
 -- =============================================================================
-NUM_BUCKETS = 10  -- configurable, saved
+NUM_BUCKETS = 20  -- configurable, saved
 current_bucket = 1
-buckets = {}  -- array of {given=0, taken=0, exp=0, gold=0, kills=0}
+buckets = {}  -- array of {given=0, taken=0, exp=0, gold=0, kills=0, healed=0}
 echo_enabled = false  -- saved
 battlespam_enabled = true  -- saved (true = show spam, false = hide)
+
+-- =============================================================================
+-- Session Totals (accumulate all stats since plugin load/reset)
+-- =============================================================================
+session_totals = {given=0, taken=0, exp=0, gold=0, kills=0, healed=0}
+session_start = nil  -- os.time() when session started
 
 -- =============================================================================
 -- Persistence Variable Keys
@@ -56,7 +62,8 @@ local function new_bucket()
         taken = 0,
         exp = 0,
         gold = 0,
-        kills = 0
+        kills = 0,
+        healed = 0
     }
 end
 
@@ -104,6 +111,7 @@ function get_totals()
             totals.exp = totals.exp + b.exp
             totals.gold = totals.gold + b.gold
             totals.kills = totals.kills + b.kills
+            totals.healed = totals.healed + (b.healed or 0)
         end
     end
     return totals
@@ -112,6 +120,19 @@ end
 -- Reset all buckets to zero
 function reset_all_buckets()
     init_buckets()
+end
+
+-- Reset session totals and start time
+function reset_session()
+    session_totals = {given=0, taken=0, exp=0, gold=0, kills=0, healed=0}
+    session_start = os.time()
+end
+
+-- Add to session totals
+function add_to_session(field, amount)
+    if session_totals[field] then
+        session_totals[field] = session_totals[field] + amount
+    end
 end
 
 -- =============================================================================
@@ -128,9 +149,9 @@ function load_state()
     font_size = tonumber(GetVariable(VAR_FONT_SIZE)) or default_font_size
 
     -- Bucket settings
-    NUM_BUCKETS = tonumber(GetVariable(VAR_NUM_BUCKETS)) or 10
+    NUM_BUCKETS = tonumber(GetVariable(VAR_NUM_BUCKETS)) or 20
     if NUM_BUCKETS < 1 then NUM_BUCKETS = 1 end
-    if NUM_BUCKETS > 100 then NUM_BUCKETS = 100 end
+    if NUM_BUCKETS > 300 then NUM_BUCKETS = 300 end
 
     -- Echo mode
     echo_enabled = (GetVariable(VAR_ECHO_ENABLED) == "true")

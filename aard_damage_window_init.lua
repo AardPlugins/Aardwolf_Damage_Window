@@ -234,6 +234,207 @@ function get_damage_regex()
 end
 
 -- =============================================================================
+-- Combat Spam Patterns (for dynamic battlespam trigger)
+-- Each pattern is a complete regex matching one type of spam message
+-- =============================================================================
+combat_spam_patterns = {
+    -- Healing/restoration
+    "^You feel less tired after .* refreshing spell\\. \\[\\d+\\]$",
+    "^[\\w ']+ heals .*self\\.$",
+    "^[\\w ']+ restores? life to .*self\\.$",
+    "^[\\w ']+ touch of nature heals .* wounds\\.$",
+    "^Protector Golem has repaired itself\\.$",
+    "^Protector Golem begins to repair itself\\.$",
+
+    -- Poison/debuff effects
+    "^As .* a spray of toxic blood hits your eyes!$",
+    "^Unseen forces remove .* poison from you before it can take hold\\.$",
+    "^Acidic poison severely impairs your senses\\.$",
+    "^The venom destroys your combat ability\\. You feel dizzy\\.$",
+    "^The stench is incredible, you feel faint and weak!$",
+    "^[\\w ']+ chokes as .* breathes in the poison\\.$",
+    "^[\\w ']+ is poisoned by the venom on .*\\.$",
+    "^[\\w ']+ forms a deadly cloud of poison\\.$",
+    "^You feel momentarily ill, but it passes\\.$",
+    "^A green mist emanates from .*\\. The mist surrounds you\\.$",
+    "^A green mist emanates from .* towards .*\\.$",
+    "^[\\w ']+ poison tears at .* skin, .* eyes stream in agony\\.$",
+    "^[\\w ']+ uses the power of the cobra against .*\\.$",
+
+    -- Blindness/vision
+    "^You can't see a thing!$",
+    "^You are weak and BLIND!$",
+    "^[\\w ']+ kicks? dirt in .* eyes!$",
+    "^[\\w ']+ failed to kick dirt into .* eyes!$",
+    "^[\\w ']+ jams .* fingers into .* eyes, causing .* searing pain\\.$",
+    "^[\\w ']+ eyes are seared by .*\\.$",
+    "^[\\w ']+ fails? to blind .*\\.$",
+
+    -- Stun/daze effects
+    "^[\\w ']+ dazes? .*, slamming into .* like a tank\\.$",
+    "^[\\w ']+ hits? .* with a massive blow, leaving .* stunned!$",
+    "^[\\w ']+ dazes? .* with a mind-numbing headbutt!$",
+    "^[\\w ']+ fails? to stun .* and .* in an attack!$",
+    "^[\\w ']+ slams .* head sideways into .*\\. OUCH! That smarts!$",
+    "^[\\w ']+ smacks? .* with a solid uppercut!$",
+
+    -- Curse/hex/debuff failures
+    "^[\\w ']+ fails to curse .*\\.$",
+    "^[\\w ']+ fails to hex .*!$",
+    "^[\\w ']+ fails to weaken .*\\.$",
+    "^[\\w ']+ fails? to interfere with .* healing\\.$",
+    "^[\\w ']+ tries to slow .* down but fails\\.$",
+
+    -- Web/entangle
+    "^[\\w ']+ entangled in an invisible web\\.$",
+    "^[\\w ']+ web fails to take hold of .*\\.$",
+    "^Unseen forces protect you from (.*?) tangling web\\.$",
+
+    -- Drain/life steal
+    "^[\\w ']+ drains? life from .*\\.$",
+    "^You feel your blood being drained!$",
+    "^You feel .* drawing your life away\\.$",
+    "^It tears at your existence and you feel extremely vulnerable\\.$",
+    "^[\\w ']+ slime tears at .* soul!$",
+
+    -- Strength/stat drain
+    "^You feel your strength slip away\\.$",
+    "^You feel a little run down, but it passes\\.$",
+    "^[\\w ']+ muscles stop responding\\.$",
+
+    -- Combat skill effects - bash/knockdown
+    "^[\\w ']+ sends? .* sprawling with a powerful bash!$",
+    "^[\\w ']+ sweeps your legs from under you!$",
+    "^[\\w ']+ hurls .* at .*, slamming into .* like a tank\\.$",
+
+    -- Combat skill effects - disarm
+    "^[\\w ']+(try|tries) to disarm .*, but fails?\\.$",
+    "^Your power grip is too strong for .*\\.$",
+
+    -- Combat skill effects - backstab
+    "^[\\w ']+ reappears behind .* and stabs .* in the back!$",
+    "^[\\w ']+ circles around .* and stabs .* in the back!$",
+    "^You attempt to bury .* deep into .* back!$",
+    "^\\w+ attempts to bury .* deep into .*$",
+    "^[\\w ']+ spins around .*, catching .* off guard, and executes a vicious triple backstab\\.$",
+
+    -- Combat skill effects - whirlwind/spin
+    "^[\\w ']+ begins to spin around, flailing wildly\\.$",
+    "^[\\w ']+ begins to spin around with .* weapon outstretched\\.$",
+    "^You stretch out your weapon and begin to spin violently!$",
+    "^[\\w ']+ with a series of hammering blows!$",
+    "^[\\w ']+ hammers? .* with a series of blows!$",
+
+    -- Combat skill effects - other
+    "^[\\w ']+ catch(es)? .* completely off-guard and inflicts? massive damage on .*\\.$",
+    "^[\\w ']+ screams? wildly and attacks? .*\\.$",
+    "^[\\w ']+ screams? wildly and (try|tries) to cleave .* in half!$",
+    "^[\\w ']+ gets? a raged look in .* eyes\\.$",
+    "^[\\w ']+ gets a wild look in .* eyes\\.$",
+
+    -- Spell/magic effects
+    "^As you land a final blow on .*, the raw energy it contains runs out of control, blasting the room!$",
+    "^[\\w ']+ hurls? a barrage of searing white blades at .*!$",
+    "^A black field of death emanates from .*\\.$",
+    "^A deep aura of dread settles around .*\\.$",
+    "^[\\w ']+ shoots? .* beam from .* hand straight towards .*!$",
+    "^[\\w ']+ calls down rains of fire!$",
+    "^[\\w ']+ conjures? a storm of freezing snow and sleet\\.$",
+    "^[\\w ']+ a chilling cloud of ice\\.$",
+    "^[\\w ']+ chants the phrase '.*'\\.$",
+    "^[\\w ']+ calls the justice of .* to strike .* foes!$",
+    "^[\\w ']+ unleashes a blast of atomic energy on the room\\.$",
+    "^Your head throbs as your reality is torn apart!$",
+
+    -- Fire/ice/shock effects
+    "^[\\w ']+ is frozen by .*\\.$",
+    "^You are frozen by .*\\.$",
+    "^[\\w ']+ turns blue and shivers\\.$",
+    "^[\\w ']+ is burned by .*\\.$",
+    "^[\\w ']+ is shocked by .*\\.$",
+    "^You are shocked by .*\\.$",
+    "^You feel a brief tingling sensation\\.$",
+    "^You feel a momentary chill on your neck\\.$",
+
+    -- Breath attacks
+    "^\\* breathes forth a huge blast of fire\\.$",
+    "^(.*?) breathes forth a huge blast of fire\\.$",
+
+    -- Bite/vampire
+    "^[\\w ']+ bites .* on .* neck\\.$",
+    "^[\\w ']+ flesh is ripped from .* body\\.$",
+
+    -- KAI-HA attacks
+    "^[\\w ']+ raises .* and starts yelling KAI-HA!$",
+    "^[\\w ']+ yells KAI-HA and then strikes .* torso\\.$",
+
+    -- Shield/reflect
+    "^[\\w ']+ spirit shield reflects .* back at .*!$",
+    "^You glow with energy as you absorb .*\\.$",
+
+    -- Root/nature
+    "^[\\w ']+ black root smashes into you and you lose control of your senses\\.$",
+
+    -- Kobold/venom items
+    "^[\\w ']+ sprays .* with .*Kobold glands\\.$",
+    "^[\\w ']+ sprays .* with acidic raven venom\\.$",
+    "^[\\w ']+ touches .* with venomous hydra's blood\\.$",
+
+    -- Mob dialogue
+    "^[\\w ']+ exclaims? 'Your level is of no interest to me .*; I will kill you anyway!'$",
+    "^[\\w ']+ says? 'Your purity sickens me, .*\\.'$",
+
+    -- Defend/intercept
+    "^\\* jumps? in to defend .*!$",
+    "^You block .* way as .* attempts? to flee\\.$",
+
+    -- Disappear/teleport
+    "^Suddenly, after performing an incantation, .* disappears\\.$",
+    "^[\\w ']+ shimmers momentarily\\.$",
+
+    -- Player dodges/avoids (enemy attacks you)
+    "^You dodge .* attack\\.$",
+    "^You parry .* attack\\.$",
+    "^You instinctively dodge .* attack\\.$",
+    "^You counter-strike .* attack!$",
+    "^You misdirect .* attack\\.$",
+    "^You get lucky and manage to escape .* attack\\.$",
+    "^You create a time shift and calmly step away from .* attack\\.$",
+    "^You blink out of existence and avoid .* attack\\.$",
+    "^You blend perfectly with your surroundings and avoid .* attack\\.$",
+    "^You sense divine intervention as .* attack narrowly misses you\\.$",
+    "^You are unaffected by .* dispel .*\\.$",
+    "^[\\w ']+ holy rift protects you from .* attack\\.$",
+
+    -- Mob dodges/avoids (you attack mob)
+    "^[\\w ']+ dodges? your attack\\.$",
+    "^[\\w ']+ parries your attack\\.$",
+    "^[\\w ']+ counter-strikes your attack!$",
+    "^[\\w ']+ misdirects your attack\\.$",
+    "^[\\w ']+ avoids your attack, almost too easily\\.$",
+    "^[\\w ']+ blocks your attack with .* shield\\.$",
+    "^[\\w ']+ blends in perfectly causing .* to hit nothing but air\\.$",
+    "^[\\w ']+ blinks out of existence avoiding your attack\\.$",
+    "^[\\w ']+ fiddles with time and your attack is just a few seconds slow\\.$",
+    "^[\\w ']+ holy rift protects .* from your attack\\.$",
+
+    -- Pet/familiar attacks
+    "^You slash at .* ferociously with your razor-sharp claws!$",
+    "^You lunge forward gnashing at .* viciously\\.$",
+    "^You spitefully bite (.*?) as if (.*?) tried to pet you more than three times\\.$",
+    "^[\\w ']+ tries to jump into the air, realizes .* is already flying, and kicks .* in the face instead!$",
+
+    -- Other player actions
+    "^\\w+ sacrifices .* corpse .*$",
+    "^With a series of lashes, .*$",
+    "^\\w+ charges into the room in a frenzy!$",
+}
+
+function combat_spam_regex()
+    return table.concat(combat_spam_patterns, "|")
+end
+
+-- =============================================================================
 -- Load Modules in Order
 -- =============================================================================
 local plugin_dir = GetPluginInfo(GetPluginID(), 20)
@@ -243,4 +444,4 @@ dofile(plugin_dir .. "aard_damage_window_window.lua")
 dofile(plugin_dir .. "aard_damage_window_handlers.lua")
 
 -- Initialization message
-info("Damage Tracker v" .. PLUGIN_VERSION .. " loaded")
+info("Damage Tracker loaded")
