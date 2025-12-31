@@ -6,13 +6,18 @@
 -- =============================================================================
 function OnPluginInstall()
     load_state()
-    suppress_triggers_for_all_tags()
 
     -- Create combat damage trigger dynamically
-    AddTrigger("combat_damage", get_damage_regex(), "", eOmitFromOutput + eTriggerRegularExpression, 0, 0, "")
-    SetTriggerOption("combat_damage", "group", "combat")
-    SetTriggerOption("combat_damage", "omit_from_output", "y")
-    SetTriggerOption("combat_damage", "script", "combine")
+    -- Use the correct MUSHclient constants (eOmitFromOutput, eTriggerRegularExpression, eEnabled)
+    local flags = eOmitFromOutput + eTriggerRegularExpression + eEnabled
+    AddTrigger("combat_damage", get_damage_regex(), "",
+        flags, -1, 0, "", "track", 0, 100)
+
+    -- Apply echo mode to all triggers
+    set_echo_mode(echo_enabled)
+
+    -- Apply battlespam mode
+    set_battlespam_mode(battlespam_enabled)
 
     init_window()
 end
@@ -40,342 +45,201 @@ function OnPluginSaveState()
 end
 
 -- =============================================================================
--- Main Trigger Handlers
+-- Main Trigger Handler
 -- =============================================================================
-function combine(name, line, wc, sr)
-    local group = GetTriggerOption(name, "group")
-    group = remove_from_end(group, "_conditional")
+function track(name, line, wc)
+    local bucket = get_current_bucket()
+    if not bucket then return end
 
-    if GetVariable(group) == "true" then
-        combine_group(group)
-        local data = options[group].data
+    if name == "combat_damage" then
+        local attacker = wc[3] or ""
+        local defender = wc[5] or ""
+        local damage = tonumber(wc[6]) or 0
 
-        if group == "death" then
-            combine_death(name, line, wc, sr, data)
-        elseif group == "lotus" then
-            combine_lotus(name, line, wc, sr, data)
-        elseif group == "equip" then
-            combine_equip(name, line, wc, sr, data)
-        elseif group == "spellup" then
-            combine_spellup(name, line, wc, sr, data)
-        elseif group == "where" then
-            combine_where(name, line, wc, sr, data)
-        elseif group == "combat" then
-            combine_combat(name, line, wc, sr, data)
+        -- Normalize to lowercase for case-insensitive comparison
+        local attacker_lower = string.lower(attacker)
+        local defender_lower = string.lower(defender)
+
+        -- Debug output
+        if debug_enabled then
+            ColourNote("orange", "", string.format("[DEBUG] attacker='%s' defender='%s' damage=%d",
+                attacker, defender, damage))
         end
 
-        options[group].end_line = GetLineCount()
+        if attacker_lower == "your" then
+            bucket.given = bucket.given + damage
+            if debug_enabled then
+                ColourNote("lime", "", string.format("[DEBUG] +%d given (total: %d)", damage, bucket.given))
+            end
+        elseif defender_lower == "you" then
+            bucket.taken = bucket.taken + damage
+            if debug_enabled then
+                ColourNote("red", "", string.format("[DEBUG] +%d taken (total: %d)", damage, bucket.taken))
+            end
+        else
+            if debug_enabled then
+                ColourNote("gray", "", "[DEBUG] Ignored third-party damage")
+            end
+        end
+        -- Ignore third-party damage (neither attacker nor defender is player)
+
+    elseif starts_with(name, "death_mob_") then
+        bucket.kills = bucket.kills + 1
+
+    elseif name == "death_exp" then
+        local exp_str = wc[2] or "0"
+        for amt in string.gmatch(exp_str, "%d+") do
+            bucket.exp = bucket.exp + (tonumber(amt) or 0)
+        end
+
+    elseif name == "death_gold" or name == "death_gold_daily" then
+        bucket.gold = bucket.gold + parse_gold(wc[1])
+
+    elseif name == "death_sacrifice" then
+        bucket.gold = bucket.gold + parse_gold(wc[2])
+
+    elseif name == "death_split" or name == "death_other_split" then
+        bucket.gold = bucket.gold + parse_gold(wc[4])
+
+    elseif name == "death_crumble" then
+        bucket.gold = bucket.gold + parse_gold(wc[2])
     end
 
-    return true
+    refresh_display()
 end
 
-function non_combine(name, line, wc)
-    clear_combine_data()
-    prev_group = nil
+-- Handler for spam triggers (does nothing - just used for omit control)
+function spam_ignore(name, line, wc)
+    -- Lines are shown/hidden via omit_from_output setting
 end
 
-function ignore(name, line, wc)
-    -- Intentionally empty - these triggers are captured but not displayed
-end
-
-function none()
-    -- No-op handler
+-- Parse gold string, removing commas
+function parse_gold(s)
+    if not s then return 0 end
+    local clean = s:gsub(",", "")
+    return tonumber(clean) or 0
 end
 
 -- =============================================================================
--- Alias Handlers - Window Control
+-- Timer Callback
 -- =============================================================================
-function window_show(name, line, wildcards)
+function on_battle_tick()
+    rotate_bucket()
+    refresh_display()
+end
+
+-- =============================================================================
+-- Alias Handlers
+-- =============================================================================
+function dt_show(name, line, wildcards)
     WindowShow(win, true)
-    ColourNote("yellow", "", "Damage window now shown. Type 'spamwin hide' to hide it.")
+    ColourNote("yellow", "", "Damage tracker window shown. Type 'dt hide' to hide it.")
 end
 
-function window_hide(name, line, wildcards)
+function dt_hide(name, line, wildcards)
     WindowShow(win, false)
-    ColourNote("yellow", "", "Damage window now hidden. Type 'spamwin show' to see it again.")
+    ColourNote("yellow", "", "Damage tracker window hidden. Type 'dt show' to see it again.")
 end
 
-function window_clear(name, line, wildcards)
-    if text_rect then
-        text_rect:clear(true)
-    end
-    ColourNote("yellow", "", "Damage window cleared.")
-end
-
-function toggle_main_echo(name, line, wildcards)
-    output_to_main = not output_to_main
-    if output_to_main then
-        ColourNote("yellow", "", "Damage window output will echo to main window.")
+function dt_echo(name, line, wildcards)
+    echo_enabled = not echo_enabled
+    set_echo_mode(echo_enabled)
+    if echo_enabled then
+        ColourNote("yellow", "", "Echo mode ON - original combat/death lines will show in main window.")
     else
-        ColourNote("yellow", "", "Damage window output will only appear in miniwindow.")
+        ColourNote("yellow", "", "Echo mode OFF - combat/death lines are hidden (stats only in tracker).")
     end
     SaveState()
 end
 
--- =============================================================================
--- Alias Handlers - Configuration
--- =============================================================================
-function display_spamreduce_option()
-    ColourNote("silver", "", "COMBINE      Type 'spamreduce combine' for list of options")
+function dt_reset(name, line, wildcards)
+    reset_all_buckets()
+    refresh_display()
+    ColourNote("yellow", "", "Damage tracker stats reset.")
 end
 
-function spamreduce_list()
-    ColourNote("teal", "", "Option       Description                                      Status")
-    ColourNote("silver", "", "---------------- ------------------------------------------------ ------")
-    for option, info in pairs(options) do
-        ColourTell("silver", "", string.format("%-16s %-49s", string.upper(option), info.desc))
-        if GetVariable(option) == "true" then
-            ColourTell("#a6da95", "", "Yes")
-        else
-            ColourTell("#f38ba8", "", "No")
-        end
-        Note()
-
-        if option == "combat" and GetVariable(option) == "true" then
-            ColourTell("silver", "", string.format("%-16s %-49s", string.upper("COMBAT OTHERS"), "Display others' damage (hide/list/full)"))
-            ColourTell("yellow", "", upper_first(GetVariable(VAR_COMBAT_OTHERS) or "full"))
-            Note()
-
-            ColourTell("silver", "", string.format("%-16s %-49s", string.upper("COMBAT PRESERVE"), "Display non-damage lines in combat"))
-            if GetVariable(VAR_PRESERVE) == "true" then
-                ColourTell("#a6da95", "", "Yes")
-            else
-                ColourTell("#f38ba8", "", "No")
-            end
-            Note()
-        end
-
-        if option == "death" and GetVariable(option) == "true" then
-            ColourTell("silver", "", string.format("%-16s %-49s", string.upper("DEATH SIMPLE"), "Simplified output (X exp. Y gold)"))
-            if GetVariable(VAR_DEATH_SIMPLE) == "true" then
-                ColourTell("#a6da95", "", "Yes")
-            else
-                ColourTell("#f38ba8", "", "No")
-            end
-            Note()
-        end
-    end
-    ColourNote("silver", "", "---------------------------------------------------------------------")
-end
-
-function toggle_var(name, line, wc)
-    local option = wc[1]
-    if options[option] then
-        toggle_group(option)
-    else
-        ColourNote("silver", "", "Invalid spam combine option given. Type 'spamreduce combine' for a list.")
-    end
-end
-
-function spamreduce_combat_preserve()
-    ColourTell("silver", "", "Turning ")
-    if GetVariable(VAR_PRESERVE) == "true" then
-        ColourTell("#f38ba8", "", "OFF")
-        SetVariable(VAR_PRESERVE, "false")
-    else
-        ColourTell("#a6da95", "", "ON")
-        SetVariable(VAR_PRESERVE, "true")
-    end
-
-    ColourTell("silver", "", " combat setting to preserve non-damage lines.")
-    Note()
-    SaveState()
-end
-
-function spamreduce_death_simple()
-    ColourTell("silver", "", "Turning ")
-    if GetVariable(VAR_DEATH_SIMPLE) == "true" then
-        ColourTell("#f38ba8", "", "OFF")
-        SetVariable(VAR_DEATH_SIMPLE, "false")
-    else
-        ColourTell("#a6da95", "", "ON")
-        SetVariable(VAR_DEATH_SIMPLE, "true")
-    end
-
-    ColourTell("silver", "", " simplified death output (X exp. Y gold).")
-    Note()
-    SaveState()
-end
-
-function spamreduce_bonusexp()
-    ColourTell("silver", "", "Turning ")
-    if GetVariable(VAR_BONUSEXP_PCT) == "true" then
-        ColourTell("#f38ba8", "", "OFF")
-        SetVariable(VAR_BONUSEXP_PCT, "false")
-    else
-        ColourTell("#a6da95", "", "ON")
-        SetVariable(VAR_BONUSEXP_PCT, "true")
-    end
-
-    ColourTell("silver", "", " bonus exp percentages.")
-    Note()
-    SaveState()
-end
-
-function spamreduce_combat_others(name, line, wc)
-    if wc[1] == "hide" or wc[1] == "list" or wc[1] == "full" then
-        set_other(wc[1])
-    else
-        ColourTell("silver", "", "Valid options for ")
-        ColourTell("olive", "", "spamreduce combine combat others")
-        ColourTell("silver", "", ": ")
-        ColourTell("yellow", "", "hide list full")
-        Note()
-    end
-end
-
-function set_other(value)
-    ColourTell("silver", "", "Display third party combat : ")
-    ColourTell("yellow", "", value)
-    Note()
-
-    SetVariable(VAR_COMBAT_OTHERS, value)
-    SaveState()
-end
-
--- =============================================================================
--- Alias Handlers - Trigger Management
--- =============================================================================
-function spamreduce_trigger(name, line, wc)
-    local trigger = wc[1]
-    local group = GetTriggerOption(trigger, "group")
-    if group and group ~= "" then
-        if trigger_overrides[trigger] then
-            ColourNote("#a6da95", "", "Enabling trigger: " .. trigger)
-            trigger_overrides[trigger] = nil
-        else
-            ColourNote("#f38ba8", "", "Disabling trigger: " .. trigger)
-            trigger_overrides[trigger] = true
-        end
-        SetVariable(VAR_TRIGGER_OVERRIDES, json.encode(trigger_overrides))
-        group = remove_from_end(group, "_conditional")
-        enable_group(group, GetVariable(group) == "true")
-        SaveState()
-    else
-        ColourNote("#f38ba8", "", "No such trigger: " .. trigger)
-    end
-end
-
-function spamreduce_triggers_all()
-    ColourNote("yellow", "", "All triggers:")
-    display_triggers(GetTriggerList())
-end
-
-function spamreduce_triggers_search(name, line, wc)
-    local search = string.lower(wc[1])
-    local matches = {}
-
-    for _, name in pairs(GetTriggerList()) do
-        local match_str = GetTriggerOption(name, "match")
-        if string.find(string.lower(name), search, 1, true) or (match_str and string.find(string.lower(match_str), search, 1, true)) then
-            table.insert(matches, name)
-        end
-    end
-
-    if #matches > 0 then
-        ColourNote("yellow", "", "Triggers matching '" .. search .. "':")
-        display_triggers(matches)
-    else
-        ColourNote("#f38ba8", "", "No triggers matched '" .. search .. "'")
-    end
-end
-
-function display_triggers(triggers)
-    local groups = {}
-    for _, trigger in pairs(triggers) do
-        local group = GetTriggerOption(trigger, "group")
-        group = remove_from_end(group, "_conditional")
-        groups[group] = groups[group] or {}
-
-        table.insert(groups[group], trigger)
-    end
-
-    for name, triggers in pairs(groups) do
-        ColourNote("white", "", "Group: " .. name)
-
-        table.sort(triggers)
-        for _, trigger in ipairs(triggers) do
-            ColourTell("silver", "", string.format("%-35s", trigger))
-            if trigger_overrides[trigger] then
-                ColourTell("#f38ba8", "", "Off ")
-            else
-                ColourTell("#a6da95", "", "On  ")
-            end
-            local match_str = GetTriggerOption(trigger, "match")
-            if match_str then
-                ColourTell("silver", "", string.format("%-40.40s", match_str))
-            end
-            Note()
-        end
-    end
-end
-
--- =============================================================================
--- Tag Suppression System
--- =============================================================================
-local SuppressAllSequence = 12
-local HeaderSequence = 13
-local FooterSequence = 11
-
-local suppress_trigger_index = 0
-local suppress_triggers_headers = {}
-
-local function regex_escape_line(str)
-    return "^" .. str:gsub("([%(%)%.%+%-%*%?%[%^%$])", "\\%1") .. "$"
-end
-
-function suppress_triggers_for_all_tags()
-    suppress_triggers_between_tags("<MAPSTART>", "<MAPEND>")
-    suppress_triggers_between_tags("{BIGMAP}", "{/BIGMAP}")
-    suppress_triggers_between_tags("{edit}", "{/edit}")
-    suppress_triggers_between_tags("{equip}", "{/equip}")
-    suppress_triggers_between_tags("{help}", "{/help}")
-    suppress_triggers_between_tags("{inventory}", "{/inventory}")
-    suppress_triggers_between_tags("{rdesc}", "{/rdesc}")
-    suppress_triggers_between_tags("{score}", "{/score}")
-    suppress_triggers_between_tags("{roomchars}", "{/roomchars}")
-    suppress_triggers_between_tags("{scan}", "{/scan}")
-end
-
-function suppress_triggers_between_tags(header, footer)
-    suppress_trigger_index = suppress_trigger_index + 1
-
-    local match = GetTriggerOption("suppress_triggers_header", "match")
-    if match then
-        local combined = match .. "|" .. regex_escape_line(header)
-        SetTriggerOption("suppress_triggers_header", "match", combined)
-    else
-        AddTriggerEx("suppress_triggers_header", regex_escape_line(header), "", trigger_flag.Enabled + trigger_flag.Replace + trigger_flag.RegularExpression + trigger_flag.Temporary, -1, 0, "", "suppress_triggers_header", 0, HeaderSequence)
-    end
-
-    AddTriggerEx("suppress_all_triggers", "*", "", trigger_flag.Replace + trigger_flag.Temporary, -1, 0, "", "", 0, SuppressAllSequence)
-
-    local footer_name = "suppress_triggers_footer_" .. suppress_trigger_index
-    AddTriggerEx(footer_name, regex_escape_line(footer), "", trigger_flag.Replace + trigger_flag.RegularExpression + trigger_flag.Temporary, -1, 0, "", "suppress_triggers_footer", 0, FooterSequence)
-
-    suppress_triggers_headers[header] = {
-        footer = footer,
-        footer_name = footer_name,
-    }
-end
-
-function suppress_triggers_header(name, line)
-    local data = suppress_triggers_headers[line]
-
-    if not data then
-        ColourNote("#f38ba8", "", "Error suppressing triggers. Invalid header line: " .. line)
-        EnableTrigger("suppress_all_triggers", false)
+function dt_ticks(name, line, wildcards)
+    local new_count = tonumber(wildcards[1])
+    if not new_count then
+        ColourNote("silver", "", "Current round count: " .. NUM_BUCKETS)
+        ColourNote("silver", "", "Usage: dt ticks <number> (1-100)")
         return
     end
 
-    EnableTrigger(data.footer_name, true)
-    EnableTrigger("suppress_all_triggers", true)
-    EnableTrigger("suppress_triggers_header", false)
+    if new_count < 1 then new_count = 1 end
+    if new_count > 100 then new_count = 100 end
+
+    NUM_BUCKETS = new_count
+    reset_all_buckets()
+    refresh_display()
+    SaveState()
+    ColourNote("yellow", "", "Now tracking last " .. NUM_BUCKETS .. " rounds (stats reset).")
 end
 
-function suppress_triggers_footer(name)
-    EnableTrigger(name, false)
-    EnableTrigger("suppress_all_triggers", false)
-    EnableTrigger("suppress_triggers_header", true)
+function dt_battlespam(name, line, wildcards)
+    battlespam_enabled = not battlespam_enabled
+    set_battlespam_mode(battlespam_enabled)
+    if battlespam_enabled then
+        ColourNote("yellow", "", "Battle spam ON - combat effect messages will show.")
+    else
+        ColourNote("yellow", "", "Battle spam OFF - combat effect messages hidden.")
+    end
+    SaveState()
+end
+
+function dt_debug(name, line, wildcards)
+    debug_enabled = not debug_enabled
+    if debug_enabled then
+        ColourNote("orange", "", "Debug mode ON - will show trigger capture details.")
+    else
+        ColourNote("orange", "", "Debug mode OFF.")
+    end
+    SaveState()
+end
+
+-- =============================================================================
+-- Echo Mode Control
+-- =============================================================================
+-- List of all triggers that should have omit_from_output toggled
+local tracked_triggers = {
+    "combat_damage",
+    "death_mob_mind", "death_mob_drain", "death_mob_pale", "death_mob_acid",
+    "death_mob_holy", "death_mob_fire", "death_mob_water", "death_mob_earth",
+    "death_mob_lightning", "death_mob_god", "death_mob_mindforce",
+    "death_mob_desolate", "death_mob_fabric", "death_mob_letsout",
+    "death_mob_slain", "death_mob_dead",
+    "death_exp",
+    "death_gold", "death_gold_daily",
+    "death_sacrifice",
+    "death_split", "death_other_split",
+    "death_crumble"
+}
+
+function set_echo_mode(enabled)
+    local omit_value = enabled and "n" or "y"
+    for _, trigger_name in ipairs(tracked_triggers) do
+        -- Check if trigger exists before trying to set option
+        local match = GetTriggerOption(trigger_name, "match")
+        if match and match ~= "" then
+            SetTriggerOption(trigger_name, "omit_from_output", omit_value)
+        end
+    end
+end
+
+-- =============================================================================
+-- Battle Spam Control
+-- =============================================================================
+-- List of triggers for combat spam (effects, dodges, etc.)
+local battlespam_triggers = {
+    "combat_spam"
+}
+
+function set_battlespam_mode(enabled)
+    local omit_value = enabled and "n" or "y"
+    for _, trigger_name in ipairs(battlespam_triggers) do
+        local match = GetTriggerOption(trigger_name, "match")
+        if match and match ~= "" then
+            SetTriggerOption(trigger_name, "omit_from_output", omit_value)
+        end
+    end
 end

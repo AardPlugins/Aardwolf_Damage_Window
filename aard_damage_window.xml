@@ -7,26 +7,25 @@
    author="Sath/Claude"
    id="cca6d33b8bb93b7689a8e606"
    language="Lua"
-   purpose="Combines multiple lines of output into a single line, displayed in a miniwindow."
+   purpose="Tracks combat stats (damage, exp, gold, kills) in a rolling window."
    save_state="y"
    date_written="2025-12-31"
    requires="4.73"
-   version="2.0"
+   version="3.0"
    sequence="50"
    >
 <description trim="y">
 <![CDATA[
-** Damage Window - Spam Reduction Plugin
-** Combines multiple lines of MUD output into condensed summaries.
-** Output is displayed in a dedicated miniwindow.
+** Damage Tracker - Combat Stats Window
+** Tracks damage given/taken, exp, gold, and kills in rolling 3-second buckets.
 
 Commands:
-  spamwin show       - Show the miniwindow
-  spamwin hide       - Hide the miniwindow
-  spamwin clear      - Clear the miniwindow contents
-  spamwin echo       - Toggle echoing to main window (on/off)
-  spamreduce combine - List all combine options
-  spamreduce combine <option> - Toggle a specific option
+  dt show       - Show the tracker window
+  dt hide       - Hide the tracker window
+  dt echo       - Toggle echoing original lines to main window
+  dt reset      - Reset all stats to zero
+  dt ticks <n>  - Set number of ticks to track (1-100, default 10)
+  dt battlespam - Toggle combat effect messages (dodges, skills, etc.)
 ]]>
 </description>
 
@@ -36,711 +35,303 @@ Commands:
 
 <aliases>
 	<alias
-		match="spamwin show"
+		match="dt show"
 		enabled="y"
-		script="window_show"
+		script="dt_show"
 		sequence="100"
 	/>
 
 	<alias
-		match="spamwin hide"
+		match="dt hide"
 		enabled="y"
-		script="window_hide"
+		script="dt_hide"
 		sequence="100"
 	/>
 
 	<alias
-		match="spamwin clear"
+		match="dt echo"
 		enabled="y"
-		script="window_clear"
+		script="dt_echo"
 		sequence="100"
 	/>
 
 	<alias
-		match="spamwin echo"
+		match="dt reset"
 		enabled="y"
-		script="toggle_main_echo"
+		script="dt_reset"
 		sequence="100"
 	/>
 
 	<alias
-		match="spamreduce combine"
+		match="dt ticks *"
 		enabled="y"
-		script="spamreduce_list"
+		script="dt_ticks"
 		sequence="100"
 	/>
 
 	<alias
-		match="spamreduce combine combat others"
+		match="dt battlespam"
 		enabled="y"
-		script="spamreduce_combat_others"
+		script="dt_battlespam"
 		sequence="100"
 	/>
 
 	<alias
-		match="spamreduce combine combat others *"
+		match="dt debug"
 		enabled="y"
-		script="spamreduce_combat_others"
-		sequence="100"
-	/>
-
-	<alias
-		match="spamreduce combine combat preserve"
-		enabled="y"
-		script="spamreduce_combat_preserve"
-		sequence="100"
-	/>
-
-	<alias
-		match="spamreduce combine death simple"
-		enabled="y"
-		script="spamreduce_death_simple"
-		sequence="100"
-	/>
-
-	<alias
-		match="spamreduce combine bonusexp"
-		enabled="y"
-		script="spamreduce_bonusexp"
-		sequence="100"
-	/>
-
-	<alias
-		match="spamreduce combine *"
-		enabled="y"
-		script="toggle_var"
-		sequence="101"
-	/>
-
-	<alias
-		match="spamreduce combine trigger *"
-		enabled="y"
-		script="spamreduce_trigger"
-		sequence="100"
-	/>
-
-	<alias
-		match="spamreduce combine triggers"
-		enabled="y"
-		script="spamreduce_triggers_all"
-		sequence="100"
-	/>
-	<alias
-		match="spamreduce combine triggers *"
-		enabled="y"
-		script="spamreduce_triggers_search"
+		script="dt_debug"
 		sequence="100"
 	/>
 </aliases>
 
+<timers>
+	<timer
+		name="battle_tick"
+		second="3"
+		enabled="y"
+		script="on_battle_tick"
+	/>
+</timers>
+
 <triggers>
+	<!-- Death message triggers to capture kills -->
 	<trigger
 		enabled="y"
-		match="WFLAGS       Hide weapon flag messages (flaming, vorpal, etc) *"
-		sequence="100"
-		keep_evaluating="y"
-		script="display_spamreduce_option"
-	/>
-
-
-	<trigger
-		enabled="n"
-		name="death_pointless"
-		match="That was a pointless no-experience kill!"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<!-- Death message triggers to capture mob name -->
-	<!-- Damage-type specific deaths (don't end with "is DEAD") -->
-	<trigger
-		enabled="n"
 		name="death_mob_mind"
 		match="^(?!\()(?P&lt;mob&gt;.+) falls dead as \w+ mind is destroyed[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_drain"
 		match="^(?!\()(?P&lt;mob&gt;.+) howls as \w+ last spark of life is drained[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_pale"
 		match="^(?!\()(?P&lt;mob&gt;.+) turns deadly pale and collapses[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_acid"
 		match="^(?!\()(?P&lt;mob&gt;.+) screams in agony as the acid consumes [^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_holy"
 		match="^(?!\()(?P&lt;mob&gt;.+) is damned forever by the holy power[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_fire"
 		match="^(?!\()(?P&lt;mob&gt;.+) screams as the flames engulf [^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_water"
 		match="^(?!\()(?P&lt;mob&gt;.+) is battered to death by the force of the water[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_earth"
 		match="^(?!\()(?P&lt;mob&gt;.+) crumbles as \w+ is battered to death[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_lightning"
 		match="^(?!\()(?P&lt;mob&gt;.+) smoulders as the lightning destroys [^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
-	<!-- Psi skill deaths -->
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_god"
 		match="^The voice of god has cleansed (?P&lt;mob&gt;.+) eternally.+DEAD.+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_mindforce"
 		match="^The mind force crushes (?P&lt;mob&gt;.+) into a bloody pulp.+DEAD.+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
-	<!-- Desolate/emotional deaths -->
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_desolate"
 		match="^(?!\()(?P&lt;mob&gt;.+) feels so desolate that life itself leaves \w+ wrecked form.+DEAD[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
-	<!-- World fabric rejection death -->
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_fabric"
 		match="^The very fabric of the world rejects (?P&lt;mob&gt;.+?) and .+ life is over.+DEAD.+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
-	<!-- "Lets out" death (final breath, etc) -->
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_letsout"
 		match="^(?!\()(?P&lt;mob&gt;.+) lets out .+DEAD[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="99"
-		script="combine"
-		group="death"
+		script="track"
 	/>
-	<!-- Generic catch-all deaths (higher sequence = lower priority) -->
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_slain"
 		match="^(?!\()(?P&lt;mob&gt;.+) is slain by a final [^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="110"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_mob_dead"
 		match="^(?!\()(?P&lt;mob&gt;.+).+DEAD[^']+$"
 		regexp="y"
 		ignore_case="y"
 		omit_from_output="y"
 		sequence="120"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 
+	<!-- Experience trigger -->
 	<trigger
-		enabled="n"
-		name="death_other_exp"
-		match="* receives * experience point*."
-		omit_from_output="y"
-		sequence="101"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_exp"
 		match="^You(?: (don't))? receive ([\d\+]+)(?: 'rare kill')?(?: bonus)? experience (?:points?|bonus)(?: courtesy of .*| to celebrate .*| to rejoice in the death of another million mobs| in honor of .*| from your daily blessing)?[\.\!](?: \:\))?$"
 		regexp="y"
 		omit_from_output="y"
 		sequence="101"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 
+	<!-- Gold triggers -->
 	<trigger
-		enabled="n"
-		name="death_is_noexp"
-		match="You have set your character to receive no experience point*!"
+		enabled="y"
+		name="death_gold"
+		match="You get * gold coins from *."
 		omit_from_output="y"
 		sequence="100"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 
 	<trigger
-		enabled="n"
-		name="death_daily_exp_remaining"
-		match="^(?:Daily bonus exp not used\. )?You have (\d+|no) (?:daily blessing )?bonus experience kills? remaining\.$"
-		regexp="y"
+		enabled="y"
+		name="death_gold_daily"
+		match="Your daily blessing added * gold to the corpse."
 		omit_from_output="y"
 		sequence="100"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 
 	<trigger
-		enabled="n"
-		name="death_campaign"
-		match="Congratulations, that was one of your CAMPAIGN mobs!"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_gq"
-		match="Congratulations, that was one of the GLOBAL QUEST mobs!"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_gq_kills"
-		match="You can be rewarded for * more global quest kill* this level."
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death_conditional"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_gq_qp"
-		match="3 quest points awarded."
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death_conditional"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_quest"
-		match="^QUEST: You have almost completed your QUEST!$|^Return to the questmaster before your time runs out\.$"
-        regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_other_vampire"
-		match="* drinks thirstily from *."
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_vampire"
-		match="^You bury your fangs deep into .*, drinking thirstily\.$|^Ahhhh, that feels better!$"
-		regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_sacrifice"
 		match="^(.*) gives you (\d+) gold coins? for (.*)\.$"
 		regexp="y"
 		omit_from_output="y"
 		sequence="100"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 
 	<trigger
-		enabled="n"
-		name="death_sacrifice_none"
-		match="^(.*) is not impressed with (.*)\.$"
-		regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_other_sacrifice"
-		match="^\w+ sacrifices the .*corpse of .* to .*\.$"
-		regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="ignore"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_other_split"
-		match="* shares * gold coins with *. Your share is * gold."
-		omit_from_output="y"
-		sequence="100"
-		group="death"
-		script="combine"
-	/>
-
-	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_split"
 		match="You share * gold coins with * other *. Your share is * gold."
 		omit_from_output="y"
 		sequence="100"
-		group="death"
-		script="combine"
+		script="track"
 	/>
 
 	<trigger
-		enabled="n"
-		name="death_gold"
-		match="You get * gold coins from *."
+		enabled="y"
+		name="death_other_split"
+		match="* shares * gold coins with *. Your share is * gold."
 		omit_from_output="y"
 		sequence="100"
-		script="combine"
-		group="death"
+		script="track"
 	/>
 
 	<trigger
-		enabled="n"
-		name="death_gold_daily"
-		match="Your daily blessing added * gold to the corpse."
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death_conditional"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_daily_gold_remaining"
-		match="^You have (\d+) daily blessing bonus gold kills? remaining.$"
-		regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death_conditional"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_gold_clan_tax"
-		match="You are taxed * gold coin* by your clan."
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death_conditional"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_invitem"
-		match="{invitem}*"
-		omit_from_output="y"
-		sequence="101"
-		script="combine"
-		group="death_conditional"
-	/>
-	<trigger
-		enabled="n"
-		name="death_invmon"
-		match="{invmon}*"
-		omit_from_output="y"
-		sequence="101"
-		script="ignore"
-		group="death_conditional"
-	/>
-
-	<trigger
-		enabled="n"
-		name="death_loot"
-		match="You get * from the *."
-		omit_from_output="y"
-		sequence="101"
-		script="combine"
-		group="death_conditional"
-	/>
-
-	<trigger
-		enabled="n"
+		enabled="y"
 		name="death_crumble"
 		match="* crumbles into * gold pieces."
 		omit_from_output="y"
 		sequence="100"
-		script="combine"
-		group="death_conditional"
+		script="track"
 	/>
 
-	<trigger
-		enabled="n"
-		name="death_preserve_multiple"
-		match="^.* is too mesmerized at the explosion of Icefall to take a bite\!$|^You notice something very shiny in the corpse\!$|^.* exclaims \'If you\'re going to dissect me\, at least do it with a larger group\!\'$|^.* is too shocked at Icefall's gory remains to attack you!$|^.* hands .* some ICE for .* BURN!$|^.* burns .* after a hug! \[.*\]$|^.* reflects .* damage, injuring .*! \[.*\]$|^.* boggles 'How am I going to tank 50 of you if so few of you killed me\?!'$|^.* pops a balloon, injuring .*! \[.*\]$|^.* bites .* one last time! \[.*\]$|^.* boggles 'My destiny was to die from an epic powerup train!  What's this\?!'$|^.* kicks .* with .* boot! \[.*\]$|^.* exclaims 'If you're going to dissect me, at least do it with a larger group!'$|^.* smacks .* before dying! \[.*\]$"
-        regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="death"
-	/>
-
-	<trigger
-		enabled="n"
-		name="lotus_amount"
-		match="Wow....what a rush! [*]"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="lotus"
-	/>
-
-	<trigger
-		enabled="n"
-		name="lotus_max"
-		match="^Your concentration is now at its peak\.$|^Your concentration is already at its peak\.$"
-        regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="lotus"
-	/>
-
-	<trigger
-		enabled="n"
-		name="equip_invmon"
-		match="{invmon}*"
-		omit_from_output="y"
-		sequence="100"
-		script="ignore"
-		group="equip"
-	/>
-
-	<trigger
-		enabled="n"
-		name="equip"
-		match="^You (?:equip|wear) (?&lt;equip2_item&gt;.+) (?:as a|on your|around your) (?&lt;equip2_slot&gt;.+)\.$|^You proudly pin (?&lt;equip_pin_item&gt;.+) to your chest\.$|^You wield (?&lt;equip_secondary_item&gt;.+) in your off\-hand\.$|^You wield (?&lt;equip_wielded_item&gt;.+)\.$|^(?&lt;equip_aura_item&gt;.+) begins floating above you\.$|^(?&lt;equip_float_item&gt;.+) begins floating around you\.$|^You light (?&lt;equip_light_item&gt;.+) and hold it\.$"
-		regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="equip"
-	/>
-
-    <trigger
-		enabled="y"
-		name="remove_from_keyring"
-		match="You remove * from your keyring."
-		sequence="99"
-		script="none"
-	/>
-
-    <trigger
-		enabled="n"
-		name="remove"
-		match="^You (?:stop using|remove) (?&lt;remove2_item&gt;.+) (?:as a|from your|from around your) (?&lt;remove2_slot&gt;.+)\.$|^You stop wielding (?&lt;remove_wielded_item&gt;.+) in your primary hand\.$|^You stop wielding (?&lt;remove_secondary_item&gt;.+) in your off\-hand\.$|^(?&lt;remove_float_item&gt;.+) stops floating around you\.$|^(?&lt;remove_aura_item&gt;.+) stops floating above you\.$|^You remove your (?&lt;remove_sleeping_item&gt;.+)\.$|^You remove (?&lt;remove_light_item&gt;.+), making the room a little darker\.$"
-		regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="equip"
-	/>
-
-	<trigger
-		enabled="n"
-		name="spellup"
-		match="Queueing spell : *."
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="spellup"
-	/>
-
-	<trigger
-		enabled="n"
-		name="where_area"
-		match="You are in area : *"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="where"
-	/>
-	<trigger
-		enabled="n"
-		name="where_creator"
-		match="Area created by : *"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="where"
-	/>
-	<trigger
-		enabled="n"
-		name="where_range"
-		match="Level range is  : *"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="where"
-	/>
-	<trigger
-		enabled="n"
-		name="where_players"
-		match="Players near you:"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="where"
-	/>
-
-	<trigger
-		enabled="n"
-		name="combat_immune"
-		match="^(?:\[(\d+)\] )?(.*) is unaffected by your (.*)\!$"
-		regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="combat"
-	/>
-
-	<trigger
-		enabled="n"
-		name="combat_force_multiple"
-		match="^.* heals .*self\.$|^Acidic poison severely impairs your senses\.$|^.* fails to curse .*\.$|^.* entangled in an invisible web\.$|^.* web fails to take hold of .*\.$|^You can\'t see a thing\!$|^.* kicks? dirt in .* eyes\!$|^The stench is incredible\, you feel faint and weak\!$|^.* dazes? .*\, slamming into .* like a tank\.$|^It tears at your existence and you feel extremely vulnerable\.$|^.* hits? .* with a massive blow\, leaving .* stunned\!$|^.* dazes? .* with a mind\-numbing headbutt\!$|^The venom destroys your combat ability\. You feel dizzy\.$|^.* flesh is ripped from .* body\.$|^You feel your strength slip away\.$|^You are weak and BLIND\!$|^\* jumps? in to defend .*\!$|^.* exclaims? \'Your level is of no interest to me .*\; I will kill you anyway\!\'$|^.* says? \'Your purity sickens me\, .*\.\'$"
-        regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="combat"
-	/>
-
-	<trigger
-		enabled="n"
-		name="combat_preserve_multiple"
-		match="^You block .* way as .* attempts? to flee\.$|^.* restores? life to .*self\.$|^You are shocked by .*\.$|^.* drains? life from .*\.$|^.* (try|tries) to disarm .*, but fails?\.$|^.* fails? to stun .* and .* in an attack\!$|^.* fails? to blind .*\.$|^.* fails to hex .*\!$|^.* slime tears at .* soul\!$|^.* begins to spin around\, flailing wildly\.$|^.* hurls? a barrage of searing white blades at .*\!$|^A black field of death emanates from .*\.$|^.* slams .* head sideways into .*\. OUCH\! That smarts\!$|^.* jams .* fingers into .* eyes, causing .* searing pain\.$|^.* chokes as .* breathes in the poison\.$|^.* sweeps your legs from under you\!$|^A deep aura of dread settles around .*\.$|^.* catch(es)? .* completely off-guard and inflicts? massive damage on .*\.$|^.* gets? a raged look in .* eyes\.$|^.* fails? to interfere with .* healing\.$|^.* screams? wildly and attacks? .*\.$|^.* with a series of hammering blows\!$|^.* black root smashes into you and you lose control of your senses\.$|^.* shoots? .* beam from .* hand straight towards .*\!$|^.* is poisoned by the venom on .*\.$|^.* raises .* and starts yelling KAI\-HA\!$|^.* yells KAI\-HA and then strikes .* torso\.$|^.* is frozen by .*\.$|^.* is burned by .*\.$|^.* eyes are seared by .*\.$|^.* spirit shield reflects .* back at .*\!$|^.* turns blue and shivers\.$|^.* gets a wild look in .* eyes\.$|^.* calls down rains of fire\!$|^.* screams? wildly and (try|tries) to cleave .* in half\!$|^A green mist emanates from .*\. The mist surrounds you\.$|^A green mist emanates from .* towards .*\.$|^.* a chilling cloud of ice\.$|^.* chants the phrase \'.*\'\.$|^.* bites .* on .* neck\.$|^.* hurls .* at .*, slamming into .* like a tank\.$|^\* breathes forth a huge blast of fire\.$|^.* calls the justice of .* to strike .* foes\!$|^.* fails to weaken .*\.$|^.* sprays .* with .*Kobold glands\.$|^.* failed to kick dirt into .* eyes\!$|^You feel a brief tingling sensation\.$|^.* sprays .* with acidic raven venom\.$|^.* touches .* with venomous hydra\'s blood\.$|^You feel momentarily ill\, but it passes\.$|^.* unleashes a blast of atomic energy on the room\.$|^.* smacks? .* with a solid uppercut\!$|^.* sends? .* sprawling with a powerful bash\!$|^.* conjures? a storm of freezing snow and sleet\.$|^.* tries to jump into the air\, realizes .* is already flying\, and kicks .* in the face instead\!$|^.* touch of nature heals .* wounds\.$|^You create a time shift and calmly step away from .* attack\.$|^You dodge .* attack\.$|^You are unaffected by .* dispel .*\.$|^You get lucky and manage to escape .* attack\.$|^You counter\-strike .* attack\!$|^You parry .* attack\.$|^You instinctively dodge .* attack\.$|^.* holy rift protects you from .* attack\.$|^You glow with energy as you absorb .*\.$|^You blink out of existence and avoid .* attack\.$|^You sense divine intervention as .* attack narrowly misses you\.$|^You misdirect .* attack\.$|^You blend perfectly with your surroundings and avoid .* attack\.$|^.* dodges? your attack\.$|^.* counter\-strikes your attack\!$|^.* parries your attack\.$|^.* misdirects your attack\.$|^.* holy rift protects .* from your attack\.$|^.* avoids your attack\, almost too easily\.$|^.* blocks your attack with .* shield\.$|^.* blends in perfectly causing .* to hit nothing but air\.$|^.* blinks out of existence avoiding your attack\.$|^.* fiddles with time and your attack is just a few seconds slow\.$|^.* shimmers momentarily\.$|^.* is shocked by .*\.$|^You are frozen by .*\.$|^.* muscles stop responding\.$|^You feel your blood being drained\!$|^Suddenly\, after performing an incantation\, .* disappears\.$|^.* tries to slow .* down but fails\.$|^.* reappears behind .* and stabs .* in the back\!$|^.* circles around .* and stabs .* in the back\!$|^.* forms a deadly cloud of poison\.$|^You feel a little run down\, but it passes\.$|^You feel .* drawing your life away\.$|^You feel a momentary chill on your neck\.$|^Your power grip is too strong for .*\.$|^Your head throbs as your reality is torn apart\!$|^.* uses the power of the cobra against .*\.$|^.* poison tears at .* skin\, .* eyes stream in agony\.$|^.* hammers? you with a series of blows!$|^(.*?) breathes forth a huge blast of fire\.$|^Unseen forces protect you from (.*?) tangling web\.$|^You slash at .* ferociously with your razor\-sharp claws\!$|^You lunge forward gnashing at .* viciously\.$|^You spitefully bite (.*?) as if (.*?) tried to pet you more than three times\.$|^You attempt to bury .* deep into .* back\!$|^.* spins around .*, catching .* off guard, and executes a vicious triple backstab\.$|^.* begins to spin around with .* weapon outstretched\.$|^You stretch out your weapon and begin to spin violently\!$"
-        regexp="y"
-		omit_from_output="y"
-		sequence="100"
-		script="combine"
-		group="combat"
-	/>
-
+	<!-- Combat spam trigger - toggleable via dt battlespam -->
 	<trigger
 		enabled="y"
-		match="*"
-		sequence="200"
-		script="non_combine"
+		name="combat_spam"
+		match="^.* heals .*self\.$|^Acidic poison severely impairs your senses\.$|^.* fails to curse .*\.$|^.* entangled in an invisible web\.$|^.* web fails to take hold of .*\.$|^You can\'t see a thing\!$|^.* kicks? dirt in .* eyes\!$|^The stench is incredible\, you feel faint and weak\!$|^.* dazes? .*\, slamming into .* like a tank\.$|^It tears at your existence and you feel extremely vulnerable\.$|^.* hits? .* with a massive blow\, leaving .* stunned\!$|^.* dazes? .* with a mind\-numbing headbutt\!$|^The venom destroys your combat ability\. You feel dizzy\.$|^.* flesh is ripped from .* body\.$|^You feel your strength slip away\.$|^You are weak and BLIND\!$|^\* jumps? in to defend .*\!$|^.* exclaims? \'Your level is of no interest to me .*\; I will kill you anyway\!\'$|^.* says? \'Your purity sickens me\, .*\.\'$|^You block .* way as .* attempts? to flee\.$|^.* restores? life to .*self\.$|^You are shocked by .*\.$|^.* drains? life from .*\.$|^.* (try|tries) to disarm .*, but fails?\.$|^.* fails? to stun .* and .* in an attack\!$|^.* fails? to blind .*\.$|^.* fails to hex .*\!$|^.* slime tears at .* soul\!$|^.* begins to spin around\, flailing wildly\.$|^.* hurls? a barrage of searing white blades at .*\!$|^A black field of death emanates from .*\.$|^.* slams .* head sideways into .*\. OUCH\! That smarts\!$|^.* jams .* fingers into .* eyes, causing .* searing pain\.$|^.* chokes as .* breathes in the poison\.$|^.* sweeps your legs from under you\!$|^A deep aura of dread settles around .*\.$|^.* catch(es)? .* completely off-guard and inflicts? massive damage on .*\.$|^.* gets? a raged look in .* eyes\.$|^.* fails? to interfere with .* healing\.$|^.* screams? wildly and attacks? .*\.$|^.* with a series of hammering blows\!$|^.* black root smashes into you and you lose control of your senses\.$|^.* shoots? .* beam from .* hand straight towards .*\!$|^.* is poisoned by the venom on .*\.$|^.* raises .* and starts yelling KAI\-HA\!$|^.* yells KAI\-HA and then strikes .* torso\.$|^.* is frozen by .*\.$|^.* is burned by .*\.$|^.* eyes are seared by .*\.$|^.* spirit shield reflects .* back at .*\!$|^.* turns blue and shivers\.$|^.* gets a wild look in .* eyes\.$|^.* calls down rains of fire\!$|^.* screams? wildly and (try|tries) to cleave .* in half\!$|^A green mist emanates from .*\. The mist surrounds you\.$|^A green mist emanates from .* towards .*\.$|^.* a chilling cloud of ice\.$|^.* chants the phrase \'.*\'\.$|^.* bites .* on .* neck\.$|^.* hurls .* at .*, slamming into .* like a tank\.$|^\* breathes forth a huge blast of fire\.$|^.* calls the justice of .* to strike .* foes\!$|^.* fails to weaken .*\.$|^.* sprays .* with .*Kobold glands\.$|^.* failed to kick dirt into .* eyes\!$|^You feel a brief tingling sensation\.$|^.* sprays .* with acidic raven venom\.$|^.* touches .* with venomous hydra\'s blood\.$|^You feel momentarily ill\, but it passes\.$|^.* unleashes a blast of atomic energy on the room\.$|^.* smacks? .* with a solid uppercut\!$|^.* sends? .* sprawling with a powerful bash\!$|^.* conjures? a storm of freezing snow and sleet\.$|^.* tries to jump into the air\, realizes .* is already flying\, and kicks .* in the face instead\!$|^.* touch of nature heals .* wounds\.$|^You create a time shift and calmly step away from .* attack\.$|^You dodge .* attack\.$|^You are unaffected by .* dispel .*\.$|^You get lucky and manage to escape .* attack\.$|^You counter\-strike .* attack\!$|^You parry .* attack\.$|^You instinctively dodge .* attack\.$|^.* holy rift protects you from .* attack\.$|^You glow with energy as you absorb .*\.$|^You blink out of existence and avoid .* attack\.$|^You sense divine intervention as .* attack narrowly misses you\.$|^You misdirect .* attack\.$|^You blend perfectly with your surroundings and avoid .* attack\.$|^.* dodges? your attack\.$|^.* counter\-strikes your attack\!$|^.* parries your attack\.$|^.* misdirects your attack\.$|^.* holy rift protects .* from your attack\.$|^.* avoids your attack\, almost too easily\.$|^.* blocks your attack with .* shield\.$|^.* blends in perfectly causing .* to hit nothing but air\.$|^.* blinks out of existence avoiding your attack\.$|^.* fiddles with time and your attack is just a few seconds slow\.$|^.* shimmers momentarily\.$|^.* is shocked by .*\.$|^You are frozen by .*\.$|^.* muscles stop responding\.$|^You feel your blood being drained\!$|^Suddenly\, after performing an incantation\, .* disappears\.$|^.* tries to slow .* down but fails\.$|^.* reappears behind .* and stabs .* in the back\!$|^.* circles around .* and stabs .* in the back\!$|^.* forms a deadly cloud of poison\.$|^You feel a little run down\, but it passes\.$|^You feel .* drawing your life away\.$|^You feel a momentary chill on your neck\.$|^Your power grip is too strong for .*\.$|^Your head throbs as your reality is torn apart\!$|^.* uses the power of the cobra against .*\.$|^.* poison tears at .* skin\, .* eyes stream in agony\.$|^.* hammers? you with a series of blows!$|^(.*?) breathes forth a huge blast of fire\.$|^Unseen forces protect you from (.*?) tangling web\.$|^You slash at .* ferociously with your razor\-sharp claws\!$|^You lunge forward gnashing at .* viciously\.$|^You spitefully bite (.*?) as if (.*?) tried to pet you more than three times\.$|^You attempt to bury .* deep into .* back\!$|^.* spins around .*, catching .* off guard, and executes a vicious triple backstab\.$|^.* begins to spin around with .* weapon outstretched\.$|^You stretch out your weapon and begin to spin violently\!$"
+		regexp="y"
+		omit_from_output="n"
+		sequence="100"
+		script="spam_ignore"
 	/>
 </triggers>
 

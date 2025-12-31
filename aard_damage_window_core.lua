@@ -1,15 +1,15 @@
 -- aard_damage_window_core.lua
--- Configuration, state management, and constants
+-- Configuration, state management, and bucket system
 
 -- =============================================================================
 -- Configuration Defaults
 -- =============================================================================
-default_width = 500
-default_height = 200
+default_width = 200
+default_height = 280
 default_x = 0
 default_y = 300
-default_font_name = "Dina"
-default_font_size = 10
+default_font_name = "Courier New"
+default_font_size = 12
 
 -- =============================================================================
 -- State Variables (global for cross-file access)
@@ -21,58 +21,98 @@ font_size = nil
 startx = nil
 starty = nil
 
-text_rect = nil
-scrollbar = nil
 windowinfo = nil
-
-output_to_main = true
 lastRefresh = 0
 
 -- =============================================================================
--- Options Configuration
+-- Bucket System State
 -- =============================================================================
--- Each option defines a trigger group that can be toggled
-options = {
-    lotus = {
-        desc = "Combine lotus potion output",
-    },
-    equip = {
-        desc = "Combine equip/remove output",
-    },
-    spellup = {
-        desc = "Combine spellup command output",
-    },
-    where = {
-        desc = "Combine the header on the 'where' command",
-    },
-    combat = {
-        desc = "Combine lines of combat",
-    },
-    death = {
-        desc = "Combine mob death output."
-    },
-}
-
--- Trigger overrides for individual triggers
-trigger_overrides = {}
-
--- Previous group for combine continuity
-prev_group = nil
+NUM_BUCKETS = 10  -- configurable, saved
+current_bucket = 1
+buckets = {}  -- array of {given=0, taken=0, exp=0, gold=0, kills=0}
+echo_enabled = false  -- saved
+battlespam_enabled = true  -- saved (true = show spam, false = hide)
 
 -- =============================================================================
 -- Persistence Variable Keys
 -- =============================================================================
 VAR_DEBUG = "debug_enabled"
-VAR_OUTPUT_TO_MAIN = "output_to_main"
 VAR_WINDOW_WIDTH = "window_width"
 VAR_WINDOW_HEIGHT = "window_height"
 VAR_FONT_NAME = "font_name"
 VAR_FONT_SIZE = "font_size"
-VAR_TRIGGER_OVERRIDES = "trigger_overrides"
-VAR_COMBAT_OTHERS = "combat_others"
-VAR_PRESERVE = "preserve"
-VAR_DEATH_SIMPLE = "death_simple"
-VAR_BONUSEXP_PCT = "bonusexp_pct"
+VAR_NUM_BUCKETS = "num_buckets"
+VAR_ECHO_ENABLED = "echo_enabled"
+VAR_BATTLESPAM = "battlespam_enabled"
+
+-- =============================================================================
+-- Bucket Functions
+-- =============================================================================
+
+-- Create a new empty bucket
+local function new_bucket()
+    return {
+        given = 0,
+        taken = 0,
+        exp = 0,
+        gold = 0,
+        kills = 0
+    }
+end
+
+-- Initialize or reset all buckets
+function init_buckets()
+    buckets = {}
+    for i = 1, NUM_BUCKETS do
+        buckets[i] = new_bucket()
+    end
+    current_bucket = 1
+end
+
+-- Rotate to next bucket (called by timer)
+function rotate_bucket()
+    current_bucket = current_bucket + 1
+    if current_bucket > NUM_BUCKETS then
+        current_bucket = 1
+    end
+    -- Reset the new current bucket
+    buckets[current_bucket] = new_bucket()
+end
+
+-- Get the current bucket for accumulating stats
+function get_current_bucket()
+    return buckets[current_bucket]
+end
+
+-- Get the previous bucket (completed tick) for display
+function get_previous_bucket()
+    local prev_index = current_bucket - 1
+    if prev_index < 1 then
+        prev_index = NUM_BUCKETS
+    end
+    return buckets[prev_index]
+end
+
+-- Sum all buckets and return totals
+function get_totals()
+    local totals = new_bucket()
+    for i = 1, NUM_BUCKETS do
+        local b = buckets[i]
+        if b then
+            totals.given = totals.given + b.given
+            totals.taken = totals.taken + b.taken
+            totals.exp = totals.exp + b.exp
+            totals.gold = totals.gold + b.gold
+            totals.kills = totals.kills + b.kills
+        end
+    end
+    return totals
+end
+
+-- Reset all buckets to zero
+function reset_all_buckets()
+    init_buckets()
+end
 
 -- =============================================================================
 -- State Management Functions
@@ -81,117 +121,40 @@ function load_state()
     -- Debug mode
     debug_enabled = (GetVariable(VAR_DEBUG) == "true")
 
-    -- Output settings
-    output_to_main = GetVariable(VAR_OUTPUT_TO_MAIN) ~= "false"
-
     -- Window dimensions
     width = tonumber(GetVariable(VAR_WINDOW_WIDTH)) or default_width
     height = tonumber(GetVariable(VAR_WINDOW_HEIGHT)) or default_height
     font_name = GetVariable(VAR_FONT_NAME) or default_font_name
     font_size = tonumber(GetVariable(VAR_FONT_SIZE)) or default_font_size
 
-    -- Trigger overrides
-    local overrides_str = GetVariable(VAR_TRIGGER_OVERRIDES)
-    if overrides_str then
-        trigger_overrides = json.decode(overrides_str) or {}
-    else
-        trigger_overrides = {}
-    end
+    -- Bucket settings
+    NUM_BUCKETS = tonumber(GetVariable(VAR_NUM_BUCKETS)) or 10
+    if NUM_BUCKETS < 1 then NUM_BUCKETS = 1 end
+    if NUM_BUCKETS > 100 then NUM_BUCKETS = 100 end
 
-    -- Combat options defaults
-    if not GetVariable(VAR_COMBAT_OTHERS) then
-        SetVariable(VAR_COMBAT_OTHERS, "full")
-    end
+    -- Echo mode
+    echo_enabled = (GetVariable(VAR_ECHO_ENABLED) == "true")
 
-    -- Enable groups based on saved state
-    for v in pairs(options) do
-        enable_group(v, GetVariable(v) == "true")
-    end
+    -- Battlespam mode (default true = show)
+    local bs = GetVariable(VAR_BATTLESPAM)
+    battlespam_enabled = (bs == nil) or (bs == "true")
+
+    -- Initialize buckets
+    init_buckets()
 end
 
 function save_state()
     SetVariable(VAR_DEBUG, tostring(debug_enabled))
-    SetVariable(VAR_OUTPUT_TO_MAIN, tostring(output_to_main))
     SetVariable(VAR_WINDOW_WIDTH, width)
     SetVariable(VAR_WINDOW_HEIGHT, height)
     SetVariable(VAR_FONT_NAME, font_name)
     SetVariable(VAR_FONT_SIZE, font_size)
-    SetVariable(VAR_TRIGGER_OVERRIDES, json.encode(trigger_overrides))
+    SetVariable(VAR_NUM_BUCKETS, NUM_BUCKETS)
+    SetVariable(VAR_ECHO_ENABLED, tostring(echo_enabled))
+    SetVariable(VAR_BATTLESPAM, tostring(battlespam_enabled))
 
     -- Save window position
     if win then
         movewindow.save_state(win)
     end
-end
-
--- =============================================================================
--- Group Management
--- =============================================================================
-function enable_group(group, enable)
-    EnableTriggerGroup(group, enable)
-    EnableTriggerGroup(group .. "_conditional", false)
-    for trigger in pairs(trigger_overrides) do
-        EnableTrigger(trigger, false)
-    end
-end
-
-function toggle_group(option)
-    if options[option] then
-        ColourTell("silver", "", "Turning ")
-        if GetVariable(option) == "true" then
-            ColourTell("#f38ba8", "", "OFF")
-            SetVariable(option, "false")
-            enable_group(option, false)
-        else
-            ColourTell("#a6da95", "", "ON")
-            SetVariable(option, "true")
-            enable_group(option, true)
-        end
-        ColourTell("silver", "", " option: " .. options[option].desc)
-        Note()
-        SaveState()
-    end
-end
-
--- =============================================================================
--- Combine Data Management
--- =============================================================================
-function clear_combine_data()
-    for option, info in pairs(options) do
-        info.data = nil
-        EnableTriggerGroup(option .. "_conditional", false)
-    end
-end
-
-function combine_group(group)
-    local new_group = false
-
-    if group ~= prev_group or (group and options[group].end_line ~= GetLineCount()) then
-        new_group = true
-        clear_combine_data()
-    end
-    prev_group = group
-
-    EnableTriggerGroup(group .. "_conditional", true)
-
-    if not options[group].data then
-        local line_count = GetLineCount()
-        if new_group and group == "death" and line_is_all_red(line_count-1) then
-            if line_is_all_red(line_count-2) then
-                options[group].data = {
-                    start_line = line_count - 2
-                }
-            else
-                options[group].data = {
-                    start_line = line_count-1
-                }
-            end
-        else
-            options[group].data = {
-                start_line = line_count
-            }
-        end
-    end
-
-    DeleteLines(GetLineCount() - options[group].data.start_line)
 end

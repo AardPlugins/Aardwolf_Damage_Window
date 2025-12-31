@@ -1,5 +1,15 @@
 -- aard_damage_window_window.lua
--- Miniwindow management, resize handling, and context menu
+-- Miniwindow management with fixed stats display
+
+-- =============================================================================
+-- Window Colors
+-- =============================================================================
+local COLOR_LABEL = 0xC0C0C0   -- Silver for labels
+local COLOR_VALUE = 0x00FF00   -- Green for values
+local COLOR_HEADER = 0xFFFF00  -- Yellow for headers
+local COLOR_GIVEN = 0x00FF00   -- Green for damage given
+local COLOR_TAKEN = 0x5F5FFF   -- Red for damage taken (BGR format)
+local COLOR_TAKEN_ZERO = 0xCC9966  -- Pastel blue for zero damage taken (BGR format)
 
 -- =============================================================================
 -- Window Initialization
@@ -24,48 +34,85 @@ function init_window()
         Theme.PRIMARY_BODY)
 
     setup_window_contents()
+    refresh_display()
     WindowShow(win, true)
 end
 
 function setup_window_contents()
     -- Setup fonts
     WindowFont(win, "title_font", font_name, font_size, false, false, false, false, 0)
+    WindowFont(win, "stats_font", font_name, font_size, false, false, false, false, 0)
+    WindowFont(win, "header_font", font_name, font_size, false, false, false, false, 0)
 
     -- Dress window with theme (title bar, border)
-    local left, top, right, bottom = Theme.DressWindow(win, "title_font", "Damage Window")
+    Theme.DressWindow(win, "title_font", "Damage Tracker")
 
     -- Add resize handler
     Theme.AddResizeTag(win, 2, nil, nil, "MouseDown", "ResizeMoveCallback", "ResizeReleaseCallback")
+end
 
-    -- Calculate text rect and scrollbar dimensions
-    local sb_width = Theme.RESIZER_SIZE
-    local tr_right = right - sb_width
-    local tr_bottom = bottom - 1
+-- =============================================================================
+-- Stats Display
+-- =============================================================================
+function refresh_display()
+    if not win then return end
 
-    -- Create or update text rect (preserve content on resize)
-    if text_rect then
-        text_rect:setRect(left, top, tr_right, tr_bottom)
-    else
-        text_rect = TextRect.new(win, "output",
-            left, top, tr_right, tr_bottom,
-            MAX_LINES, true, Theme.PRIMARY_BODY, 3, font_name, font_size)
-        text_rect:setExternalMenuFunction(build_menu)
-    end
+    -- Get theme boundaries
+    local left, top, right, bottom = Theme.DressWindow(win, "title_font", "Damage Tracker")
 
-    -- Create or update scrollbar
-    if scrollbar then
-        scrollbar:setRect(tr_right, top, right, bottom - sb_width)
-    else
-        scrollbar = ScrollBar.new(win, "scroll",
-            tr_right, top, right, bottom - sb_width)
+    -- Clear the content area
+    WindowRectOp(win, 2, left, top, right, bottom, Theme.PRIMARY_BODY)
 
-        -- Connect scroll callbacks (only on first creation)
-        text_rect:addUpdateCallback(scrollbar, scrollbar.setScroll)
-        scrollbar:addUpdateCallback(text_rect, text_rect.setScroll)
-    end
+    local line_height = WindowFontInfo(win, "stats_font", 1) + 2
+    local x = left + 5
+    local y = top + 5
+    local label_width = 70
 
-    text_rect:draw()
-    scrollbar:draw()
+    local bucket = get_previous_bucket()
+    local totals = get_totals()
+
+    -- Draw "Last Round:" header
+    WindowText(win, "header_font", "Last Round:", x, y, 0, 0, COLOR_HEADER)
+    y = y + line_height + 2
+
+    -- Current bucket stats
+    draw_stat_line(x, y, label_width, "Given:", bucket.given, COLOR_GIVEN)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "Taken:", bucket.taken, bucket.taken > 0 and COLOR_TAKEN or COLOR_TAKEN_ZERO)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "Gold:", bucket.gold, COLOR_VALUE)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "XP:", bucket.exp, COLOR_VALUE)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "Kills:", bucket.kills, COLOR_VALUE)
+    y = y + line_height
+
+    -- Spacer
+    y = y + 12
+
+    -- Draw "Last N Rounds:" header
+    local header_text = "Last " .. NUM_BUCKETS .. " Rounds:"
+    WindowText(win, "header_font", header_text, x, y, 0, 0, COLOR_HEADER)
+    y = y + line_height + 2
+
+    -- Totals
+    draw_stat_line(x, y, label_width, "Given:", totals.given, COLOR_GIVEN)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "Taken:", totals.taken, totals.taken > 0 and COLOR_TAKEN or COLOR_TAKEN_ZERO)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "Gold:", totals.gold, COLOR_VALUE)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "XP:", totals.exp, COLOR_VALUE)
+    y = y + line_height
+    draw_stat_line(x, y, label_width, "Kills:", totals.kills, COLOR_VALUE)
+
+    -- Repaint
+    CallPlugin(plugin_id_repaint, "BufferedRepaint")
+end
+
+function draw_stat_line(x, y, label_width, label, value, color)
+    WindowText(win, "stats_font", label, x, y, 0, 0, COLOR_LABEL)
+    WindowText(win, "stats_font", format_number(value), x + label_width, y, 0, 0, color)
 end
 
 -- =============================================================================
@@ -86,9 +133,7 @@ end
 function MouseUp(flags, hotspot_id)
     -- Handle right-click menu on title bar
     if bit.band(flags, miniwin.hotspot_got_rh_mouse) ~= 0 then
-        if text_rect then
-            text_rect:rightClickMenu()
-        end
+        show_context_menu()
     end
 end
 
@@ -102,8 +147,8 @@ function ResizeMoveCallback()
     local posx, posy = WindowInfo(win, 17), WindowInfo(win, 18)
     width = width + posx - startx
     startx = posx
-    if width < 200 then
-        width = 200
+    if width < 150 then
+        width = 150
         startx = windowinfo.window_left + width
     elseif windowinfo.window_left + width > GetInfo(281) then
         width = GetInfo(281) - windowinfo.window_left
@@ -111,8 +156,8 @@ function ResizeMoveCallback()
     end
     height = height + posy - starty
     starty = posy
-    if height < 100 then
-        height = 100
+    if height < 200 then
+        height = 200
         starty = windowinfo.window_top + height
     elseif windowinfo.window_top + height > GetInfo(280) then
         height = GetInfo(280) - windowinfo.window_top
@@ -121,6 +166,7 @@ function ResizeMoveCallback()
     if utils.timer() - lastRefresh > 0.0333 then
         WindowResize(win, width, height, Theme.PRIMARY_BODY)
         setup_window_contents()
+        refresh_display()
         lastRefresh = utils.timer()
     end
 end
@@ -128,83 +174,35 @@ end
 function ResizeReleaseCallback()
     WindowResize(win, width, height, Theme.PRIMARY_BODY)
     setup_window_contents()
-    if text_rect then
-        text_rect:reWrapLines()
-        text_rect:draw()
-    end
-    if scrollbar then
-        scrollbar:draw()
-    end
-    CallPlugin(plugin_id_repaint, "BufferedRepaint")
+    refresh_display()
 end
 
 -- =============================================================================
 -- Context Menu
 -- =============================================================================
-function build_menu()
-    local menu_items = {}
+function show_context_menu()
+    local menu_str = "Configure Font"
+    menu_str = menu_str .. "|" .. (echo_enabled and "+" or "") .. "Echo to Main"
+    menu_str = menu_str .. "|-"
+    menu_str = menu_str .. "|Reset Stats"
 
-    -- Font configuration
-    table.insert(menu_items, {"Configure Font", function()
+    local result = WindowMenu(win,
+        WindowInfo(win, 14),  -- mouse x
+        WindowInfo(win, 15),  -- mouse y
+        menu_str)
+
+    if result == "Configure Font" then
         local wanted_font = utils.fontpicker(font_name, font_size)
         if wanted_font then
             font_name = wanted_font.name
             font_size = wanted_font.size
-            if text_rect then
-                text_rect:loadFont(font_name, font_size)
-                text_rect:reWrapLines()
-            end
             setup_window_contents()
+            refresh_display()
             SaveState()
         end
-    end})
-
-    table.insert(menu_items, {"-", ""})
-
-    -- Echo toggle
-    table.insert(menu_items, {
-        (output_to_main and "+" or "") .. "Echo to Main Window",
-        function()
-            output_to_main = not output_to_main
-            if output_to_main then
-                ColourNote("yellow", "", "Damage window output will echo to main window.")
-            else
-                ColourNote("yellow", "", "Damage window output will only appear in miniwindow.")
-            end
-            SaveState()
-        end
-    })
-
-    table.insert(menu_items, {"-", ""})
-
-    -- Groups submenu
-    table.insert(menu_items, {">Groups", ""})
-    for option, info in pairs(options) do
-        table.insert(menu_items, {
-            (GetVariable(option) == "true" and "+" or "") .. upper_first(option),
-            function()
-                toggle_group(option)
-            end
-        })
+    elseif result == "Echo to Main" then
+        dt_echo()
+    elseif result == "Reset Stats" then
+        dt_reset()
     end
-    table.insert(menu_items, {"<", ""})
-
-    table.insert(menu_items, {"-", ""})
-
-    -- Clear window
-    table.insert(menu_items, {"Clear Window", function()
-        window_clear()
-    end})
-
-    -- Build menu string and handlers
-    local menu_strings = {}
-    local menu_functions = {}
-    for i, v in ipairs(menu_items) do
-        table.insert(menu_strings, v[1])
-        if type(v[2]) == "function" then
-            table.insert(menu_functions, v[2])
-        end
-    end
-
-    return table.concat(menu_strings, "|"), menu_functions
 end

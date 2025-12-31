@@ -4,83 +4,70 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is the Damage Window plugin for Aardwolf MUD via MUSHclient. It reduces spam by combining multiple lines of MUD output (combat damage, mob deaths, equipment changes, etc.) into condensed summaries displayed in a dedicated miniwindow.
+This is the Damage Tracker plugin for Aardwolf MUD via MUSHclient. It tracks combat statistics (damage given, damage taken, exp, gold, kills) in a rolling window of 3-second "battle ticks".
 
 ## Plugin Architecture
 
 ### Load Order
 The XML bootstrap loads modules in this order via `dofile()`:
 ```
-aard_damage_window.xml → _init.lua → _core.lua → _output.lua → _window.lua → _death.lua → _combat.lua → _misc.lua → _handlers.lua
+aard_damage_window.xml → _init.lua → _core.lua → _window.lua → _handlers.lua
 ```
 
 ### Module Responsibilities
-- **_init.lua** - Dependencies (`gmcphelper`, `json`, `mw_theme_base`), shared utilities (`gmcp()`, `debug_log()`, string helpers), module loading
-- **_core.lua** - Configuration defaults, state variables, options table, `load_state()`/`save_state()`, trigger group management
-- **_output.lua** - Output abstraction layer routing to miniwindow and optionally main window (`output_tell()`, `output_note()`, `duplicate_color_output()`)
-- **_window.lua** - Miniwindow creation, resize handling, mouse callbacks, context menu builder
-- **_death.lua** - Death message combining logic with verbose and simple output modes
-- **_combat.lua** - Combat damage combining, damage type mappings (`damage_nouns`, `damage_verbs`), dynamic regex generation
-- **_misc.lua** - Lotus, equip, spellup, and where combining handlers
-- **_handlers.lua** - All alias/trigger callbacks (MUST be global), plugin lifecycle hooks, tag suppression system
+- **_init.lua** - Dependencies (gmcphelper, json, mw_theme_base, movewindow), shared utilities, damage_verbs table, regex helpers for dynamic combat trigger
+- **_core.lua** - Configuration defaults, bucket system state and functions (init, rotate, get_current, get_totals, reset), persistence
+- **_window.lua** - Miniwindow creation, fixed stats display with refresh_display(), context menu
+- **_handlers.lua** - Plugin lifecycle, track() trigger handler, timer callback, alias handlers (dt_show, dt_hide, dt_echo, dt_reset, dt_ticks), echo mode control
 
-### Combine Groups
-Each group has triggers in the XML and a handler in the Lua code:
-- `death` - Mob death, exp, gold, loot, sacrifice
-- `combat` - Damage dealt/received with type tracking
-- `lotus` - Lotus potion consumption
-- `equip` - Equipment swap/wear/remove
-- `spellup` - Spell queue messages
-- `where` - Area/creator/level range header
+### Data Model
+- **Circular buffer** of N buckets (configurable, default 10)
+- Each bucket: `{given=0, taken=0, exp=0, gold=0, kills=0}`
+- **3-second timer** rotates to next bucket and resets it
+- "Last Tick" = current bucket being filled
+- "Last N Ticks" = sum of all N buckets
 
-Groups toggle via `spamreduce combine <group>`. Each group has a `_conditional` trigger subgroup enabled only during active combining.
+### Triggers
+All triggers call the unified `track()` handler:
+- **Death/kills** (16 triggers): `death_mob_*` patterns for various death messages
+- **Exp**: `death_exp` regex captures exp amounts (handles "1500+150" format)
+- **Gold**: `death_gold`, `death_gold_daily`, `death_sacrifice`, `death_split`, `death_other_split`, `death_crumble`
+- **Combat damage**: `combat_damage` (dynamic regex created at runtime)
+
+### User Commands
+```
+dt show       - Show the tracker window
+dt hide       - Hide the tracker window
+dt echo       - Toggle echoing original lines to main window
+dt reset      - Reset all stats to zero
+dt ticks <n>  - Set number of ticks to track (1-100)
+```
+
+### Echo Mode
+- OFF (default): Triggers have `omit_from_output="y"` - lines suppressed, stats only
+- ON: Triggers have `omit_from_output="n"` - original lines show in main window
 
 ## Key Patterns
 
-### Trigger-to-Handler Flow
-1. Trigger fires with `script="combine"` and `group="<group_name>"`
-2. `combine()` in _handlers.lua routes to group-specific handler
-3. Handler accumulates data in `options[group].data` table
-4. `DeleteLines()` removes accumulated MUD output
-5. Handler outputs condensed summary via `output_tell()`/`output_note()`
+### Trigger-to-Bucket Flow
+1. Trigger fires → `track(name, line, wc)` called
+2. `track()` gets current bucket via `get_current_bucket()`
+3. Based on trigger name, adds to appropriate bucket field
+4. `refresh_display()` updates window
 
-### State Management
+### Timer Flow
+1. Every 3 seconds, `on_battle_tick()` fires
+2. `rotate_bucket()` advances index and resets new bucket
+3. `refresh_display()` updates window
+
+### State Persistence
 ```lua
--- Core state variables (global for cross-file access)
-options = { death = {desc="..."}, combat = {desc="..."}, ... }
-trigger_overrides = {}  -- Individual trigger disable overrides
-output_to_main = true   -- Echo to main window
-
--- Persistence via GetVariable/SetVariable
-VAR_DEBUG, VAR_OUTPUT_TO_MAIN, VAR_COMBAT_OTHERS, VAR_PRESERVE, etc.
+VAR_NUM_BUCKETS = "num_buckets"
+VAR_ECHO_ENABLED = "echo_enabled"
+VAR_WINDOW_WIDTH/HEIGHT/FONT_NAME/FONT_SIZE
 ```
 
-### Output Routing
-All output goes through the abstraction in _output.lua:
-```lua
-output_tell("color", "text")  -- Buffers styled text
-output_note()                 -- Flushes to miniwindow + main (if enabled)
-duplicate_color_output(sr)    -- Outputs MUSHclient style runs
-```
-
-### Tag Suppression
-`suppress_triggers_between_tags(header, footer)` prevents triggers firing inside tagged blocks like `{score}...{/score}`, `<MAPSTART>...<MAPEND>`.
-
-## User Commands
-
-```
-spamwin show/hide/clear     - Window visibility control
-spamwin echo                - Toggle main window echo
-spamreduce combine          - List all combine options
-spamreduce combine <group>  - Toggle a specific group
-spamreduce combine combat others <hide|list|full>
-spamreduce combine combat preserve
-spamreduce combine death simple
-spamreduce combine trigger <name>  - Toggle individual trigger
-spamreduce combine triggers [search]
-```
-
-## Testing & Debug
+## Testing
 
 Reload plugin: Right-click plugin in MUSHclient > Reload
-Debug mode: Set `debug_enabled = true` in _init.lua or modify saved state
+Debug mode: Set `debug_enabled = true` in _core.lua
