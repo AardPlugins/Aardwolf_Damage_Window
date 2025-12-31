@@ -5,6 +5,7 @@
 -- =============================================================================
 -- Dependencies
 -- =============================================================================
+dofile(GetInfo(60) .. "aardwolf_colors.lua")
 require("gmcphelper")
 json = require("json")
 
@@ -45,6 +46,11 @@ end
 -- =============================================================================
 function info(msg)
     ColourNote("lime", "", "[DamageTracker] " .. msg)
+end
+
+function Message(str)
+    AnsiNote(stylesToANSI(ColoursToStyles(string.format(
+        "\n@C[@YDamageTracker@C]@w %s\n", str))))
 end
 
 function debug_log(msg)

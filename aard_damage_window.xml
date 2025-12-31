@@ -20,12 +20,17 @@
 ** Tracks damage given/taken, exp, gold, and kills in rolling 3-second buckets.
 
 Commands:
+  dt            - Show plugin status
+  dt help       - Show all commands
+  dt status     - Show plugin status
   dt show       - Show the tracker window
   dt hide       - Hide the tracker window
   dt echo       - Toggle echoing original lines to main window
   dt reset      - Reset all stats to zero
-  dt ticks <n>  - Set number of ticks to track (1-100, default 10)
+  dt rounds <n> - Set number of rounds to track (1-100, default 10)
   dt battlespam - Toggle combat effect messages (dodges, skills, etc.)
+  dt debug      - Toggle debug mode
+  dt reload     - Reload plugin
 ]]>
 </description>
 
@@ -35,52 +40,12 @@ Commands:
 
 <aliases>
 	<alias
-		match="dt show"
+		match="^dt(?: (.*))?$"
 		enabled="y"
-		script="dt_show"
+		regexp="y"
+		ignore_case="y"
 		sequence="100"
-	/>
-
-	<alias
-		match="dt hide"
-		enabled="y"
-		script="dt_hide"
-		sequence="100"
-	/>
-
-	<alias
-		match="dt echo"
-		enabled="y"
-		script="dt_echo"
-		sequence="100"
-	/>
-
-	<alias
-		match="dt reset"
-		enabled="y"
-		script="dt_reset"
-		sequence="100"
-	/>
-
-	<alias
-		match="dt ticks *"
-		enabled="y"
-		script="dt_ticks"
-		sequence="100"
-	/>
-
-	<alias
-		match="dt battlespam"
-		enabled="y"
-		script="dt_battlespam"
-		sequence="100"
-	/>
-
-	<alias
-		match="dt debug"
-		enabled="y"
-		script="dt_debug"
-		sequence="100"
+		script="alias_dt"
 	/>
 </aliases>
 

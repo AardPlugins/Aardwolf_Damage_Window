@@ -129,20 +129,114 @@ function on_battle_tick()
 end
 
 -- =============================================================================
--- Alias Handlers
+-- Unified Alias Dispatcher
 -- =============================================================================
-function dt_show(name, line, wildcards)
+function alias_dt(name, line, wildcards)
+    local args = wildcards[1] or ""
+    local parts = {}
+    for word in args:gmatch("%S+") do
+        table.insert(parts, word)
+    end
+
+    local cmd = parts[1] and parts[1]:lower() or "status"
+    table.remove(parts, 1)
+
+    if cmd == "help" then
+        cmd_help()
+    elseif cmd == "status" then
+        cmd_status()
+    elseif cmd == "show" then
+        cmd_show()
+    elseif cmd == "hide" then
+        cmd_hide()
+    elseif cmd == "echo" then
+        cmd_echo(parts[1])
+    elseif cmd == "reset" then
+        cmd_reset()
+    elseif cmd == "rounds" then
+        cmd_rounds(parts[1])
+    elseif cmd == "battlespam" then
+        cmd_battlespam(parts[1])
+    elseif cmd == "debug" then
+        cmd_debug(parts[1])
+    elseif cmd == "reload" then
+        cmd_reload()
+    else
+        info("Unknown command: " .. cmd)
+        cmd_help()
+    end
+end
+
+-- =============================================================================
+-- Command Handlers
+-- =============================================================================
+function cmd_help()
+    Message([[@WCommands:@w
+
+  @Ydt                       @w- Show plugin status
+  @Ydt help                  @w- Show this help
+  @Ydt status                @w- Show plugin status
+  @Ydt show                  @w- Show tracker window
+  @Ydt hide                  @w- Hide tracker window
+  @Ydt echo @w[@Yon@w|@Yoff@w]          - Toggle/set echo mode
+  @Ydt reset                 @w- Reset all stats to zero
+  @Ydt rounds @w<@Yn@w>            - Set rounds to track (1-100)
+  @Ydt battlespam @w[@Yon@w|@Yoff@w]   - Toggle combat spam
+  @Ydt debug @w[@Yon@w|@Yoff@w]        - Toggle debug mode
+  @Ydt reload                @w- Reload plugin]])
+end
+
+function cmd_status()
+    local echo_str = echo_enabled and "@GYes" or "@RNo"
+    local spam_str = battlespam_enabled and "@GYes" or "@RNo"
+    local debug_str = debug_enabled and "@GYes" or "@RNo"
+    local visible = win and WindowInfo(win, 5) and "@GVisible" or "@RHidden"
+    local totals = get_totals()
+
+    Message(string.format([[@WStatus:@w
+
+  @WWindow:       @w(%s@w)
+  @WRounds:       @w(@Y%d@w)
+  @WEcho:         @w(%s@w)
+  @WBattlespam:   @w(%s@w)
+  @WDebug:        @w(%s@w)
+
+  @W--- Session Totals ---@w
+  @WGiven:        @G%s@w
+  @WTaken:        @R%s@w
+  @WGold:         @Y%s@w
+  @WExp:          @Y%s@w
+  @WKills:        @Y%s@w]],
+    visible,
+    NUM_BUCKETS,
+    echo_str,
+    spam_str,
+    debug_str,
+    format_number(totals.given),
+    format_number(totals.taken),
+    format_number(totals.gold),
+    format_number(totals.exp),
+    format_number(totals.kills)))
+end
+
+function cmd_show()
     WindowShow(win, true)
     ColourNote("yellow", "", "Damage tracker window shown. Type 'dt hide' to hide it.")
 end
 
-function dt_hide(name, line, wildcards)
+function cmd_hide()
     WindowShow(win, false)
     ColourNote("yellow", "", "Damage tracker window hidden. Type 'dt show' to see it again.")
 end
 
-function dt_echo(name, line, wildcards)
-    echo_enabled = not echo_enabled
+function cmd_echo(toggle)
+    if toggle == "on" then
+        echo_enabled = true
+    elseif toggle == "off" then
+        echo_enabled = false
+    else
+        echo_enabled = not echo_enabled
+    end
     set_echo_mode(echo_enabled)
     if echo_enabled then
         ColourNote("yellow", "", "Echo mode ON - original combat/death lines will show in main window.")
@@ -152,17 +246,17 @@ function dt_echo(name, line, wildcards)
     SaveState()
 end
 
-function dt_reset(name, line, wildcards)
+function cmd_reset()
     reset_all_buckets()
     refresh_display()
     ColourNote("yellow", "", "Damage tracker stats reset.")
 end
 
-function dt_ticks(name, line, wildcards)
-    local new_count = tonumber(wildcards[1])
+function cmd_rounds(n)
+    local new_count = tonumber(n)
     if not new_count then
         ColourNote("silver", "", "Current round count: " .. NUM_BUCKETS)
-        ColourNote("silver", "", "Usage: dt ticks <number> (1-100)")
+        ColourNote("silver", "", "Usage: dt rounds <number> (1-100)")
         return
     end
 
@@ -176,8 +270,14 @@ function dt_ticks(name, line, wildcards)
     ColourNote("yellow", "", "Now tracking last " .. NUM_BUCKETS .. " rounds (stats reset).")
 end
 
-function dt_battlespam(name, line, wildcards)
-    battlespam_enabled = not battlespam_enabled
+function cmd_battlespam(toggle)
+    if toggle == "on" then
+        battlespam_enabled = true
+    elseif toggle == "off" then
+        battlespam_enabled = false
+    else
+        battlespam_enabled = not battlespam_enabled
+    end
     set_battlespam_mode(battlespam_enabled)
     if battlespam_enabled then
         ColourNote("yellow", "", "Battle spam ON - combat effect messages will show.")
@@ -187,14 +287,41 @@ function dt_battlespam(name, line, wildcards)
     SaveState()
 end
 
-function dt_debug(name, line, wildcards)
-    debug_enabled = not debug_enabled
+function cmd_debug(toggle)
+    if toggle == "on" then
+        debug_enabled = true
+    elseif toggle == "off" then
+        debug_enabled = false
+    else
+        debug_enabled = not debug_enabled
+    end
     if debug_enabled then
         ColourNote("orange", "", "Debug mode ON - will show trigger capture details.")
     else
         ColourNote("orange", "", "Debug mode OFF.")
     end
     SaveState()
+end
+
+function cmd_reload()
+    info("Reloading plugin...")
+    if GetAlphaOption("script_prefix") == "" then
+        SetAlphaOption("script_prefix", "\\\\\\")
+    end
+    Execute(
+        GetAlphaOption("script_prefix") .. 'DoAfterSpecial(0.5, "ReloadPlugin(\'' .. GetPluginID() .. '\')", sendto.script)'
+    )
+end
+
+-- =============================================================================
+-- Context Menu Compatibility Wrappers
+-- =============================================================================
+function dt_echo()
+    cmd_echo()
+end
+
+function dt_reset()
+    cmd_reset()
 end
 
 -- =============================================================================
