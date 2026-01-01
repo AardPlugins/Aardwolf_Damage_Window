@@ -49,8 +49,8 @@ function init_window()
 end
 
 function setup_window_contents()
-    -- Setup fonts
-    WindowFont(win, "title_font", font_name, font_size, false, false, false, false, 0)
+    -- Setup fonts - use Dina 6pt for title bar (matches Rich Exits)
+    WindowFont(win, "title_font", "Dina", 6, false, false, false, false, 0)
     WindowFont(win, "stats_font", font_name, font_size, false, false, false, false, 0)
     WindowFont(win, "header_font", font_name, font_size, false, false, false, false, 0)
 
@@ -320,25 +320,58 @@ end
 -- =============================================================================
 -- Context Menu
 -- =============================================================================
+-- Plugin ID for miniwindow z-order management
+local plugin_id_zorder = "462b665ecb569efbf261422f"
+
+function bring_to_front()
+    CallPlugin(plugin_id_zorder, "boostMe", win)
+end
+
+function send_to_back()
+    CallPlugin(plugin_id_zorder, "dropMe", win)
+end
+
 function show_context_menu()
-    local menu_str = "Configure Font"
-    menu_str = menu_str .. "|" .. (echo_enabled and "+" or "") .. "Echo to Main"
-    menu_str = menu_str .. "|-"
     -- Layout submenu with checkmarks for current selection
-    menu_str = menu_str .. "|>Layout"
+    local menu_str = ">Layout"
     menu_str = menu_str .. "|" .. (layout_mode == "tabular" and "+" or "") .. "Tabular"
     menu_str = menu_str .. "|" .. (layout_mode == "compact" and "+" or "") .. "Compact"
     menu_str = menu_str .. "|" .. (layout_mode == "classic" and "+" or "") .. "Classic"
     menu_str = menu_str .. "|<"
     menu_str = menu_str .. "|-"
+    -- Toggle options with checkmarks
+    menu_str = menu_str .. "|" .. (echo_enabled and "+" or "") .. "Echo to Main"
+    menu_str = menu_str .. "|" .. (battlespam_enabled and "+" or "") .. "Battle Spam"
+    menu_str = menu_str .. "|" .. (debug_enabled and "+" or "") .. "Debug Mode"
+    menu_str = menu_str .. "|-"
+    menu_str = menu_str .. "|Configure Font"
     menu_str = menu_str .. "|Reset Stats"
+    menu_str = menu_str .. "|-"
+    menu_str = menu_str .. "|Bring To Front"
+    menu_str = menu_str .. "|Send To Back"
 
     local result = WindowMenu(win,
         WindowInfo(win, 14),  -- mouse x
         WindowInfo(win, 15),  -- mouse y
         menu_str)
 
-    if result == "Configure Font" then
+    if result == "Bring To Front" then
+        bring_to_front()
+    elseif result == "Send To Back" then
+        send_to_back()
+    elseif result == "Tabular" then
+        dt_layout("tabular")
+    elseif result == "Compact" then
+        dt_layout("compact")
+    elseif result == "Classic" then
+        dt_layout("classic")
+    elseif result == "Echo to Main" then
+        dt_echo()
+    elseif result == "Battle Spam" then
+        cmd_battlespam()
+    elseif result == "Debug Mode" then
+        cmd_debug()
+    elseif result == "Configure Font" then
         local wanted_font = utils.fontpicker(font_name, font_size)
         if wanted_font then
             font_name = wanted_font.name
@@ -347,14 +380,6 @@ function show_context_menu()
             refresh_display()
             SaveState()
         end
-    elseif result == "Echo to Main" then
-        dt_echo()
-    elseif result == "Tabular" then
-        dt_layout("tabular")
-    elseif result == "Compact" then
-        dt_layout("compact")
-    elseif result == "Classic" then
-        dt_layout("classic")
     elseif result == "Reset Stats" then
         dt_reset()
     end
