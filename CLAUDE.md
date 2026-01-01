@@ -71,11 +71,22 @@ dt show       - Show the tracker window
 dt hide       - Hide the tracker window
 dt echo [on|off]        - Toggle/set echoing original lines to main window
 dt reset      - Reset all stats to zero
-dt rounds <n> - Set number of rounds to track (1-100, default 10)
+dt rounds <n> - Set number of rounds to track (1-300, default 20)
+dt layout <mode>        - Set layout: tabular, compact, classic
 dt battlespam [on|off]  - Toggle/set combat effect messages (dodges, skills)
+dt summary [on|off]     - Toggle round summary output to main window
 dt debug [on|off]       - Toggle/set debug mode
 dt reload     - Reload plugin
 ```
+
+### Layout Modes
+Three display layouts are available via `dt layout <mode>` or right-click menu:
+
+| Mode | Description | Height |
+|------|-------------|--------|
+| `tabular` | Two-column with "Round" and "Total" headers (default) | ~150px |
+| `compact` | Slash format: "round / total" per line | ~130px |
+| `classic` | Original two-section vertical layout | ~280px |
 
 ### Echo Mode
 Controls whether tracked trigger lines appear in main window:
@@ -115,6 +126,8 @@ VAR_FONT_SIZE = "font_size"
 VAR_NUM_BUCKETS = "num_buckets"
 VAR_ECHO_ENABLED = "echo_enabled"
 VAR_BATTLESPAM = "battlespam_enabled"
+VAR_SUMMARY_ENABLED = "summary_enabled"
+VAR_LAYOUT_MODE = "layout_mode"
 ```
 Window position saved via `movewindow.save_state()`.
 

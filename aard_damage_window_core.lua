@@ -4,8 +4,8 @@
 -- =============================================================================
 -- Configuration Defaults
 -- =============================================================================
-default_width = 200
-default_height = 280
+default_width = 250
+default_height = 175
 default_x = 0
 default_y = 300
 default_font_name = "Courier New"
@@ -33,6 +33,7 @@ buckets = {}  -- array of {given=0, taken=0, exp=0, gold=0, kills=0, healed=0}
 echo_enabled = false  -- saved
 battlespam_enabled = true  -- saved (true = show spam, false = hide)
 summary_enabled = false  -- saved (round summary to main window)
+layout_mode = "tabular"  -- saved (tabular, compact, classic)
 
 -- =============================================================================
 -- Session Totals (accumulate all stats since plugin load/reset)
@@ -52,6 +53,7 @@ VAR_NUM_BUCKETS = "num_buckets"
 VAR_ECHO_ENABLED = "echo_enabled"
 VAR_BATTLESPAM = "battlespam_enabled"
 VAR_SUMMARY_ENABLED = "summary_enabled"
+VAR_LAYOUT_MODE = "layout_mode"
 
 -- =============================================================================
 -- Bucket Functions
@@ -165,6 +167,14 @@ function load_state()
     -- Summary mode
     summary_enabled = (GetVariable(VAR_SUMMARY_ENABLED) == "true")
 
+    -- Layout mode (default tabular)
+    local saved_layout = GetVariable(VAR_LAYOUT_MODE)
+    if saved_layout == "compact" or saved_layout == "classic" then
+        layout_mode = saved_layout
+    else
+        layout_mode = "tabular"
+    end
+
     -- Initialize buckets
     init_buckets()
 end
@@ -179,6 +189,7 @@ function save_state()
     SetVariable(VAR_ECHO_ENABLED, tostring(echo_enabled))
     SetVariable(VAR_BATTLESPAM, tostring(battlespam_enabled))
     SetVariable(VAR_SUMMARY_ENABLED, tostring(summary_enabled))
+    SetVariable(VAR_LAYOUT_MODE, layout_mode)
 
     -- Save window position
     if win then

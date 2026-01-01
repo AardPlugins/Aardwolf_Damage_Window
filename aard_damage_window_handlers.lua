@@ -189,6 +189,8 @@ function alias_dt(name, line, wildcards)
         cmd_summary(parts[1])
     elseif cmd == "debug" then
         cmd_debug(parts[1])
+    elseif cmd == "layout" then
+        cmd_layout(parts[1])
     elseif cmd == "reload" then
         cmd_reload()
     else
@@ -211,6 +213,7 @@ function cmd_help()
   @Ydt echo @w[@Yon@w|@Yoff@w]         @w- Toggle/set echo mode
   @Ydt reset                 @w- Reset all stats to zero
   @Ydt rounds @w<@Yn@w>            @w- Set rounds to track (1-300)
+  @Ydt layout @w<@Ymode@w>         @w- Set layout: tabular, compact, classic
   @Ydt battlespam @w[@Yon@w|@Yoff@w]   @w- Toggle combat spam
   @Ydt summary @w[@Yon@w|@Yoff@w]      @w- Toggle round summary output
   @Ydt debug @w[@Yon@w|@Yoff@w]        @w- Toggle debug mode
@@ -228,6 +231,7 @@ function cmd_status()
     Message(string.format([[@WStatus:@w
 
   @WWindow:       @w(%s@w)
+  @WLayout:       @w(@Y%s@w)
   @WRounds:       @w(@Y%d@w)
   @WEcho:         @w(%s@w)
   @WBattlespam:   @w(%s@w)
@@ -250,6 +254,7 @@ function cmd_status()
   @WExp:          @Y%s@w
   @WKills:        @Y%s@w]],
     visible,
+    layout_mode,
     NUM_BUCKETS,
     echo_str,
     spam_str,
@@ -371,6 +376,28 @@ function cmd_debug(toggle)
     SaveState()
 end
 
+function cmd_layout(mode)
+    local valid_layouts = {tabular = true, compact = true, classic = true}
+
+    if not mode or mode == "" then
+        ColourNote("silver", "", "Current layout: " .. layout_mode)
+        ColourNote("silver", "", "Valid layouts: tabular, compact, classic")
+        return
+    end
+
+    mode = mode:lower()
+    if not valid_layouts[mode] then
+        ColourNote("red", "", "Invalid layout: " .. mode)
+        ColourNote("silver", "", "Valid layouts: tabular, compact, classic")
+        return
+    end
+
+    layout_mode = mode
+    resize_to_layout(mode)
+    SaveState()
+    ColourNote("yellow", "", "Layout changed to: " .. mode)
+end
+
 function cmd_reload()
     info("Reloading plugin...")
     if GetAlphaOption("script_prefix") == "" then
@@ -390,6 +417,10 @@ end
 
 function dt_reset()
     cmd_reset()
+end
+
+function dt_layout(mode)
+    cmd_layout(mode)
 end
 
 -- =============================================================================
