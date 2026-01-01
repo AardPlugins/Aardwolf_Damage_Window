@@ -428,6 +428,9 @@ combat_spam_patterns = {
     "^\\w+ sacrifices .* corpse .*$",
     "^With a series of lashes, .*$",
     "^\\w+ charges into the room in a frenzy!$",
+    "^\\w+ makes .* skinned from .*\\.$",
+    "^\\w+ drops .* skinned from .*\\.$",
+    "^.* skinned from .* crumbles into dust\\.$",
 }
 
 function combat_spam_regex()

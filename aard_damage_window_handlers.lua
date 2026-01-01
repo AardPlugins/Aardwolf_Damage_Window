@@ -152,6 +152,7 @@ end
 -- =============================================================================
 function on_battle_tick()
     rotate_bucket()
+    output_round_summary()
     refresh_display()
 end
 
@@ -184,6 +185,8 @@ function alias_dt(name, line, wildcards)
         cmd_rounds(parts[1])
     elseif cmd == "battlespam" then
         cmd_battlespam(parts[1])
+    elseif cmd == "summary" then
+        cmd_summary(parts[1])
     elseif cmd == "debug" then
         cmd_debug(parts[1])
     elseif cmd == "reload" then
@@ -209,6 +212,7 @@ function cmd_help()
   @Ydt reset                 @w- Reset all stats to zero
   @Ydt rounds @w<@Yn@w>            @w- Set rounds to track (1-300)
   @Ydt battlespam @w[@Yon@w|@Yoff@w]   @w- Toggle combat spam
+  @Ydt summary @w[@Yon@w|@Yoff@w]      @w- Toggle round summary output
   @Ydt debug @w[@Yon@w|@Yoff@w]        @w- Toggle debug mode
   @Ydt reload                @w- Reload plugin]])
 end
@@ -335,6 +339,22 @@ function cmd_battlespam(toggle)
     SaveState()
 end
 
+function cmd_summary(toggle)
+    if toggle == "on" then
+        summary_enabled = true
+    elseif toggle == "off" then
+        summary_enabled = false
+    else
+        summary_enabled = not summary_enabled
+    end
+    if summary_enabled then
+        ColourNote("yellow", "", "Summary mode ON - round stats will print to main window.")
+    else
+        ColourNote("yellow", "", "Summary mode OFF.")
+    end
+    SaveState()
+end
+
 function cmd_debug(toggle)
     if toggle == "on" then
         debug_enabled = true
@@ -418,4 +438,29 @@ function set_battlespam_mode(enabled)
             SetTriggerOption(trigger_name, "omit_from_output", omit_value)
         end
     end
+end
+
+-- =============================================================================
+-- Round Summary Output
+-- =============================================================================
+function output_round_summary()
+    if not summary_enabled then return end
+
+    local b = get_previous_bucket()
+    -- Skip if all zeros
+    if b.given == 0 and b.taken == 0 and (b.healed or 0) == 0
+       and b.gold == 0 and b.exp == 0 and b.kills == 0 then
+        return
+    end
+
+    local line = string.format(
+        "@C[@YDT@C]@w Given: @G%s@w | Taken: @R%s@w | Heals: @G%s@w | Gold: @Y%s@w | XP: @Y%s@w | Kills: @Y%s",
+        format_number(b.given),
+        format_number(b.taken),
+        format_number(b.healed or 0),
+        format_number(b.gold),
+        format_number(b.exp),
+        format_number(b.kills)
+    )
+    AnsiNote(stylesToANSI(ColoursToStyles(line)))
 end

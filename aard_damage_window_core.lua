@@ -32,6 +32,7 @@ current_bucket = 1
 buckets = {}  -- array of {given=0, taken=0, exp=0, gold=0, kills=0, healed=0}
 echo_enabled = false  -- saved
 battlespam_enabled = true  -- saved (true = show spam, false = hide)
+summary_enabled = false  -- saved (round summary to main window)
 
 -- =============================================================================
 -- Session Totals (accumulate all stats since plugin load/reset)
@@ -50,6 +51,7 @@ VAR_FONT_SIZE = "font_size"
 VAR_NUM_BUCKETS = "num_buckets"
 VAR_ECHO_ENABLED = "echo_enabled"
 VAR_BATTLESPAM = "battlespam_enabled"
+VAR_SUMMARY_ENABLED = "summary_enabled"
 
 -- =============================================================================
 -- Bucket Functions
@@ -160,6 +162,9 @@ function load_state()
     local bs = GetVariable(VAR_BATTLESPAM)
     battlespam_enabled = (bs == nil) or (bs == "true")
 
+    -- Summary mode
+    summary_enabled = (GetVariable(VAR_SUMMARY_ENABLED) == "true")
+
     -- Initialize buckets
     init_buckets()
 end
@@ -173,6 +178,7 @@ function save_state()
     SetVariable(VAR_NUM_BUCKETS, NUM_BUCKETS)
     SetVariable(VAR_ECHO_ENABLED, tostring(echo_enabled))
     SetVariable(VAR_BATTLESPAM, tostring(battlespam_enabled))
+    SetVariable(VAR_SUMMARY_ENABLED, tostring(summary_enabled))
 
     -- Save window position
     if win then
