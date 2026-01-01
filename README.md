@@ -2,7 +2,7 @@
 
 A MUSHclient plugin that tracks combat statistics in real-time, displaying them in a compact miniwindow.
 
-![Damage Tracker Window](docs/window.png)
+<img src="docs/window.png" width="354" alt="Damage Tracker Window">
 
 ## Features
 
