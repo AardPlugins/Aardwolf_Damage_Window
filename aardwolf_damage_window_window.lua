@@ -102,7 +102,7 @@ local function draw_classic(left, top, right, bottom)
     local y = top + 5
     local label_width = 70
 
-    local bucket = get_previous_bucket()
+    local bucket = get_last_n_buckets(BUCKETS_PER_ROUND)
     local totals = get_totals()
 
     -- Draw "Last Round:" header
@@ -120,7 +120,7 @@ local function draw_classic(left, top, right, bottom)
     y = y + 12
 
     -- Draw "Last N Rounds:" header
-    local header_text = "Last " .. NUM_BUCKETS .. " Rounds:"
+    local header_text = "Last " .. NUM_ROUNDS .. " Rounds:"
     WindowText(win, "header_font", header_text, x, y, 0, 0, COLOR_HEADER)
     y = y + line_height + 2
 
@@ -147,7 +147,7 @@ local function draw_tabular(left, top, right, bottom)
     local col_width = math.floor((content_width - label_width - 15) / 2)
     local col2_x = col1_x + col_width        -- Total column
 
-    local bucket = get_previous_bucket()
+    local bucket = get_last_n_buckets(BUCKETS_PER_ROUND)
     local totals = get_totals()
 
     -- Draw column headers
@@ -183,7 +183,7 @@ local function draw_compact(left, top, right, bottom)
     local label_width = 55                   -- Space for labels like "Heals:"
     local val_x = x + label_width + 15       -- 15px gap after label
 
-    local bucket = get_previous_bucket()
+    local bucket = get_last_n_buckets(BUCKETS_PER_ROUND)
     local totals = get_totals()
 
     -- Draw stats rows in "round / total" format

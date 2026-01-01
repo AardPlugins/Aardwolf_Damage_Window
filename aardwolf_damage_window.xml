@@ -3,21 +3,22 @@
 
 <muclient>
 <plugin
-   name="aard_damage_window"
-   author="Sath/Claude"
+   name="Aardwolf_Damage_Window"
+   author="Deathr"
    id="cca6d33b8bb93b7689a8e606"
    language="Lua"
    purpose="Tracks combat stats (damage, healing, exp, gold, kills) in a rolling window."
    save_state="y"
    date_written="2025-12-31"
    requires="4.73"
-   version="3.0"
+   version="1.0"
    sequence="50"
    >
 <description trim="y">
 <![CDATA[
 ** Damage Tracker - Combat Stats Window
-** Tracks damage given/taken, healing, exp, gold, and kills in rolling 3-second buckets.
+** Tracks damage given/taken, healing, exp, gold, and kills with 1-second resolution.
+** Display updates every second; "Now" shows live 3-second stats, "Sum" shows rolling total.
 
 Commands:
   dt            - Show all commands (help)
@@ -27,7 +28,7 @@ Commands:
   dt hide       - Hide the tracker window
   dt echo       - Toggle echoing original lines to main window
   dt reset      - Reset all stats to zero
-  dt rounds <n> - Set number of rounds to track (1-300, default 20)
+  dt rounds <n> - Set rounds for Sum column (1-300, each round=3s)
   dt battlespam - Toggle combat effect messages (dodges, skills, etc.)
   dt debug      - Toggle debug mode
   dt reload     - Reload plugin
@@ -52,7 +53,7 @@ Commands:
 <timers>
 	<timer
 		name="battle_tick"
-		second="3"
+		second="1"
 		enabled="y"
 		script="on_battle_tick"
 	/>
@@ -309,13 +310,11 @@ Commands:
 		script="track"
 	/>
 
-	<!-- combat_spam trigger is created dynamically in OnPluginInstall() -->
-	<!-- See combat_spam_patterns table in aard_damage_window_init.lua -->
 </triggers>
 
 <script>
 <![CDATA[
-dofile(GetPluginInfo(GetPluginID(), 20) .. "aard_damage_window_init.lua")
+dofile(GetPluginInfo(GetPluginID(), 20) .. "aardwolf_damage_window_init.lua")
 ]]>
 </script>
 

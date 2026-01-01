@@ -152,7 +152,12 @@ end
 -- =============================================================================
 function on_battle_tick()
     rotate_bucket()
-    output_round_summary()
+    tick_counter = tick_counter + 1
+    -- Only output round summary every 3 ticks (once per 3-second round)
+    if tick_counter >= BUCKETS_PER_ROUND then
+        output_round_summary()
+        tick_counter = 0
+    end
     refresh_display()
 end
 
@@ -212,7 +217,7 @@ function cmd_help()
   @Ydt hide                  @w- Hide tracker window
   @Ydt echo @w[@Yon@w|@Yoff@w]         @w- Toggle/set echo mode
   @Ydt reset                 @w- Reset all stats to zero
-  @Ydt rounds @w<@Yn@w>            @w- Set rounds to track (1-300)
+  @Ydt rounds @w<@Yn@w>            @w- Set rounds for Sum (1-300, each round=3s)
   @Ydt layout @w<@Ymode@w>         @w- Set layout: tabular, compact, classic
   @Ydt battlespam @w[@Yon@w|@Yoff@w]   @w- Toggle combat spam
   @Ydt summary @w[@Yon@w|@Yoff@w]      @w- Toggle round summary output
@@ -255,11 +260,11 @@ function cmd_status()
   @WKills:        @Y%s@w]],
     visible,
     layout_mode,
-    NUM_BUCKETS,
+    NUM_ROUNDS,
     echo_str,
     spam_str,
     debug_str,
-    NUM_BUCKETS,
+    NUM_ROUNDS,
     format_number(rolling.given),
     format_number(rolling.taken),
     format_number(rolling.healed or 0),
@@ -312,7 +317,7 @@ end
 function cmd_rounds(n)
     local new_count = tonumber(n)
     if not new_count then
-        ColourNote("silver", "", "Current round count: " .. NUM_BUCKETS)
+        ColourNote("silver", "", "Current round count: " .. NUM_ROUNDS)
         ColourNote("silver", "", "Usage: dt rounds <number> (1-300)")
         return
     end
@@ -320,11 +325,12 @@ function cmd_rounds(n)
     if new_count < 1 then new_count = 1 end
     if new_count > 300 then new_count = 300 end
 
-    NUM_BUCKETS = new_count
+    NUM_ROUNDS = new_count
+    NUM_BUCKETS = NUM_ROUNDS * BUCKETS_PER_ROUND
     reset_all_buckets()
     refresh_display()
     SaveState()
-    ColourNote("yellow", "", "Now tracking last " .. NUM_BUCKETS .. " rounds (stats reset).")
+    ColourNote("yellow", "", "Now tracking last " .. NUM_ROUNDS .. " rounds (stats reset).")
 end
 
 function cmd_battlespam(toggle)
@@ -477,7 +483,7 @@ end
 function output_round_summary()
     if not summary_enabled then return end
 
-    local b = get_previous_bucket()
+    local b = get_last_n_buckets(BUCKETS_PER_ROUND)
     -- Skip if all zeros
     if b.given == 0 and b.taken == 0 and (b.healed or 0) == 0
        and b.gold == 0 and b.exp == 0 and b.kills == 0 then

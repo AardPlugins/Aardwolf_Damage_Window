@@ -442,9 +442,9 @@ end
 -- =============================================================================
 local plugin_dir = GetPluginInfo(GetPluginID(), 20)
 
-dofile(plugin_dir .. "aard_damage_window_core.lua")
-dofile(plugin_dir .. "aard_damage_window_window.lua")
-dofile(plugin_dir .. "aard_damage_window_handlers.lua")
+dofile(plugin_dir .. "aardwolf_damage_window_core.lua")
+dofile(plugin_dir .. "aardwolf_damage_window_window.lua")
+dofile(plugin_dir .. "aardwolf_damage_window_handlers.lua")
 
 -- Initialization message
 info("Damage Tracker loaded")

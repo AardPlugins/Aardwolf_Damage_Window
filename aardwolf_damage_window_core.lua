@@ -27,10 +27,13 @@ lastRefresh = 0
 -- =============================================================================
 -- Bucket System State
 -- =============================================================================
-NUM_BUCKETS = 20  -- configurable, saved
+BUCKETS_PER_ROUND = 3  -- 1-second buckets per 3-second round
+NUM_ROUNDS = 20  -- user-facing rounds (3s each), configurable, saved
+NUM_BUCKETS = NUM_ROUNDS * BUCKETS_PER_ROUND  -- actual 1-second buckets
 current_bucket = 1
 buckets = {}  -- array of {given=0, taken=0, exp=0, gold=0, kills=0, healed=0}
-echo_enabled = false  -- saved
+tick_counter = 0  -- counts 1-second ticks for round summary timing
+echo_enabled = true  -- saved (default on: show tracked lines in main window)
 battlespam_enabled = true  -- saved (true = show spam, false = hide)
 summary_enabled = false  -- saved (round summary to main window)
 layout_mode = "tabular"  -- saved (tabular, compact, classic)
@@ -49,7 +52,7 @@ VAR_WINDOW_WIDTH = "window_width"
 VAR_WINDOW_HEIGHT = "window_height"
 VAR_FONT_NAME = "font_name"
 VAR_FONT_SIZE = "font_size"
-VAR_NUM_BUCKETS = "num_buckets"
+VAR_NUM_ROUNDS = "num_buckets"  -- keep same key for backwards compatibility
 VAR_ECHO_ENABLED = "echo_enabled"
 VAR_BATTLESPAM = "battlespam_enabled"
 VAR_SUMMARY_ENABLED = "summary_enabled"
@@ -104,6 +107,25 @@ function get_previous_bucket()
     return buckets[prev_index]
 end
 
+-- Sum the last n buckets including current (for real-time 3-second display)
+function get_last_n_buckets(n)
+    local totals = new_bucket()
+    for i = 0, n - 1 do
+        local idx = current_bucket - i
+        if idx < 1 then idx = idx + NUM_BUCKETS end
+        local b = buckets[idx]
+        if b then
+            totals.given = totals.given + b.given
+            totals.taken = totals.taken + b.taken
+            totals.exp = totals.exp + b.exp
+            totals.gold = totals.gold + b.gold
+            totals.kills = totals.kills + b.kills
+            totals.healed = totals.healed + (b.healed or 0)
+        end
+    end
+    return totals
+end
+
 -- Sum all buckets and return totals
 function get_totals()
     local totals = new_bucket()
@@ -152,13 +174,15 @@ function load_state()
     font_name = GetVariable(VAR_FONT_NAME) or default_font_name
     font_size = tonumber(GetVariable(VAR_FONT_SIZE)) or default_font_size
 
-    -- Bucket settings
-    NUM_BUCKETS = tonumber(GetVariable(VAR_NUM_BUCKETS)) or 20
-    if NUM_BUCKETS < 1 then NUM_BUCKETS = 1 end
-    if NUM_BUCKETS > 300 then NUM_BUCKETS = 300 end
+    -- Round settings (user-facing 3-second rounds)
+    NUM_ROUNDS = tonumber(GetVariable(VAR_NUM_ROUNDS)) or 20
+    if NUM_ROUNDS < 1 then NUM_ROUNDS = 1 end
+    if NUM_ROUNDS > 300 then NUM_ROUNDS = 300 end
+    NUM_BUCKETS = NUM_ROUNDS * BUCKETS_PER_ROUND
 
-    -- Echo mode
-    echo_enabled = (GetVariable(VAR_ECHO_ENABLED) == "true")
+    -- Echo mode (default true = show tracked lines)
+    local echo = GetVariable(VAR_ECHO_ENABLED)
+    echo_enabled = (echo == nil) or (echo == "true")
 
     -- Battlespam mode (default true = show)
     local bs = GetVariable(VAR_BATTLESPAM)
@@ -185,7 +209,7 @@ function save_state()
     SetVariable(VAR_WINDOW_HEIGHT, height)
     SetVariable(VAR_FONT_NAME, font_name)
     SetVariable(VAR_FONT_SIZE, font_size)
-    SetVariable(VAR_NUM_BUCKETS, NUM_BUCKETS)
+    SetVariable(VAR_NUM_ROUNDS, NUM_ROUNDS)
     SetVariable(VAR_ECHO_ENABLED, tostring(echo_enabled))
     SetVariable(VAR_BATTLESPAM, tostring(battlespam_enabled))
     SetVariable(VAR_SUMMARY_ENABLED, tostring(summary_enabled))

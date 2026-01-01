@@ -4,28 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is the Damage Tracker plugin for Aardwolf MUD via MUSHclient. It tracks combat statistics (damage given, damage taken, healing, exp, gold, kills) in a rolling window of 3-second "rounds" displayed in a miniwindow.
+This is the Damage Tracker plugin for Aardwolf MUD via MUSHclient. It tracks combat statistics (damage given, damage taken, healing, exp, gold, kills) with 1-second resolution, displayed in a miniwindow. The "Now" column shows live stats for the last 3 seconds (including the current bucket being accumulated), while "Sum" shows the rolling total of all tracked rounds.
 
 ## Plugin Architecture
 
 ### Load Order
 The XML bootstrap loads modules in this order via `dofile()`:
 ```
-aard_damage_window.xml → _init.lua → _core.lua → _window.lua → _handlers.lua
+aardwolf_damage_window.xml → _init.lua → _core.lua → _window.lua → _handlers.lua
 ```
 
 ### Module Responsibilities
 - **_init.lua** - Dependencies (gmcphelper, json, mw_theme_base, movewindow), logging utilities (`info()`, `Message()`, `debug_log()`), helper functions, `damage_verbs` table, `combat_spam_patterns` table, regex helpers for dynamic triggers
-- **_core.lua** - Configuration defaults, bucket system state and functions (`init_buckets`, `rotate_bucket`, `get_current_bucket`, `get_previous_bucket`, `get_totals`, `reset_all_buckets`), state persistence (`load_state`, `save_state`)
+- **_core.lua** - Configuration defaults, bucket system state and functions (`init_buckets`, `rotate_bucket`, `get_current_bucket`, `get_last_n_buckets`, `get_totals`, `reset_all_buckets`), state persistence (`load_state`, `save_state`)
 - **_window.lua** - Miniwindow creation (`init_window`), stats display (`refresh_display`), mouse handlers, resize callbacks, context menu
 - **_handlers.lua** - Plugin lifecycle callbacks (`OnPluginInstall`, etc.), unified `alias_dt` dispatcher, command handlers (`cmd_help`, `cmd_status`, `cmd_show`, `cmd_hide`, `cmd_echo`, `cmd_reset`, `cmd_rounds`, `cmd_battlespam`, `cmd_debug`, `cmd_reload`), `track()` trigger handler, `on_battle_tick()` timer callback, echo/battlespam mode control
 
 ### Data Model
-- **Circular buffer** of N buckets (configurable via `dt rounds`, default 20)
+- **Circular buffer** of N buckets at 1-second resolution
+- `NUM_ROUNDS` = user-facing 3-second rounds (configurable via `dt rounds`, default 20)
+- `BUCKETS_PER_ROUND = 3` (1-second buckets per 3-second round)
+- `NUM_BUCKETS = NUM_ROUNDS * BUCKETS_PER_ROUND` (actual bucket count)
 - Each bucket: `{given=0, taken=0, exp=0, gold=0, kills=0, healed=0}`
-- **3-second timer** rotates to next bucket and resets it
-- "Last Round" display = `get_previous_bucket()` (most recently completed round)
-- "Last N Rounds" display = `get_totals()` (sum of all N buckets)
+- **1-second timer** rotates to next bucket and resets it
+- "Now" display = `get_last_n_buckets(BUCKETS_PER_ROUND)` (sum of last 3 buckets including current = live 3-second window)
+- "Sum" display = `get_totals()` (sum of all buckets)
 
 ### Triggers
 **Tracked triggers** (call `track()` handler):
@@ -112,10 +115,10 @@ Controls visibility of combat effect messages (dodges, parries, skill effects):
 4. `refresh_display()` updates miniwindow
 
 ### Timer Flow
-1. Every 3 seconds, `on_battle_tick()` fires
+1. Every 1 second, `on_battle_tick()` fires
 2. `rotate_bucket()` advances `current_bucket` index and resets the new current bucket to zeros
-3. `output_round_summary()` prints round stats to main window (if `dt summary on`)
-4. `refresh_display()` updates miniwindow with new "Last Round" and "Last N Rounds" values
+3. `tick_counter` increments; every 3 ticks (3 seconds), `output_round_summary()` prints round stats to main window (if `dt summary on`)
+4. `refresh_display()` updates miniwindow with new "Now" (live 3-second sum including current bucket) and "Sum" (all buckets) values
 
 ### State Persistence
 ```lua
@@ -124,7 +127,7 @@ VAR_WINDOW_WIDTH = "window_width"
 VAR_WINDOW_HEIGHT = "window_height"
 VAR_FONT_NAME = "font_name"
 VAR_FONT_SIZE = "font_size"
-VAR_NUM_BUCKETS = "num_buckets"
+VAR_NUM_ROUNDS = "num_buckets"  -- key unchanged for backwards compatibility
 VAR_ECHO_ENABLED = "echo_enabled"
 VAR_BATTLESPAM = "battlespam_enabled"
 VAR_SUMMARY_ENABLED = "summary_enabled"
