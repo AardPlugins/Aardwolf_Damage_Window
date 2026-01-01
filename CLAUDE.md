@@ -21,7 +21,7 @@ aard_damage_window.xml → _init.lua → _core.lua → _window.lua → _handlers
 - **_handlers.lua** - Plugin lifecycle callbacks (`OnPluginInstall`, etc.), unified `alias_dt` dispatcher, command handlers (`cmd_help`, `cmd_status`, `cmd_show`, `cmd_hide`, `cmd_echo`, `cmd_reset`, `cmd_rounds`, `cmd_battlespam`, `cmd_debug`, `cmd_reload`), `track()` trigger handler, `on_battle_tick()` timer callback, echo/battlespam mode control
 
 ### Data Model
-- **Circular buffer** of N buckets (configurable via `dt rounds`, default 10)
+- **Circular buffer** of N buckets (configurable via `dt rounds`, default 20)
 - Each bucket: `{given=0, taken=0, exp=0, gold=0, kills=0, healed=0}`
 - **3-second timer** rotates to next bucket and resets it
 - "Last Round" display = `get_previous_bucket()` (most recently completed round)
@@ -84,9 +84,9 @@ Three display layouts are available via `dt layout <mode>` or right-click menu:
 
 | Mode | Description | Height |
 |------|-------------|--------|
-| `tabular` | Two-column with "Round" and "Total" headers (default) | ~150px |
-| `compact` | Slash format: "round / total" per line | ~130px |
-| `classic` | Original two-section vertical layout | ~280px |
+| `tabular` | Two-column with "Now" and "Sum" headers (default) | 175px |
+| `compact` | Slash format: "round / total" per line | 150px |
+| `classic` | Original two-section vertical layout | 330px |
 
 ### Echo Mode
 Controls whether tracked trigger lines appear in main window:
@@ -114,7 +114,8 @@ Controls visibility of combat effect messages (dodges, parries, skill effects):
 ### Timer Flow
 1. Every 3 seconds, `on_battle_tick()` fires
 2. `rotate_bucket()` advances `current_bucket` index and resets the new current bucket to zeros
-3. `refresh_display()` updates miniwindow with new "Last Round" and "Last N Rounds" values
+3. `output_round_summary()` prints round stats to main window (if `dt summary on`)
+4. `refresh_display()` updates miniwindow with new "Last Round" and "Last N Rounds" values
 
 ### State Persistence
 ```lua
