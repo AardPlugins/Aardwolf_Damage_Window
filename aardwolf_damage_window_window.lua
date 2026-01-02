@@ -17,7 +17,7 @@ local COLOR_SLASH = 0x808080   -- Gray for slash separator
 -- =============================================================================
 local layout_dimensions = {
     tabular = {width = 250, height = 175},
-    compact = {width = 250, height = 150},
+    compact = {width = 150, height = 125},
     classic = {width = 175, height = 330},
 }
 
@@ -75,6 +75,38 @@ local stats_labels = {
     exp = "XP:",
     kills = "Kills:"
 }
+
+-- Compact layout uses shorter labels
+local stats_labels_compact = {
+    given = "At:",
+    taken = "Df:",
+    healed = "Hp:",
+    gold = "Gp:",
+    exp = "XP:",
+    kills = "Kil:"
+}
+
+-- Format number in K/M notation (e.g., 1100 -> 1.1K, 1100000 -> 1.1M)
+-- At 100K+ and 100M+, drop the decimal to save width
+local function format_number_short(n)
+    if n >= 1000000 then
+        local m = n / 1000000
+        if m >= 100 or m == math.floor(m) then
+            return string.format("%dM", math.floor(m))
+        else
+            return string.format("%.1fM", m)
+        end
+    elseif n >= 1000 then
+        local k = n / 1000
+        if k >= 100 or k == math.floor(k) then
+            return string.format("%dK", math.floor(k))
+        else
+            return string.format("%.1fK", k)
+        end
+    else
+        return tostring(n)
+    end
+end
 
 -- Get color for a stat value
 local function get_stat_color(stat_name, value)
@@ -174,43 +206,40 @@ local function draw_tabular(left, top, right, bottom)
 end
 
 -- =============================================================================
--- Layout: Compact (slash format: round / total)
+-- Layout: Compact (tabular without headers, K/M notation)
 -- =============================================================================
 local function draw_compact(left, top, right, bottom)
     local line_height = WindowFontInfo(win, "stats_font", 1) + 2
     local x = left + 5
     local y = top + 5
-    local label_width = 55                   -- Space for labels like "Heals:"
-    local val_x = x + label_width + 15       -- 15px gap after label
+
+    -- Fixed column positions for tight layout
+    local label_width = 25                   -- Short labels like "At:"
+    local col_width = 50                     -- Fixed 50px per column
+    local col_gap = 8                        -- Gap between columns
+    local col1_x = x + label_width + 5       -- Now column
+    local col2_x = col1_x + col_width + col_gap  -- Sum column
 
     local bucket = get_last_n_buckets(BUCKETS_PER_ROUND)
     local totals = get_totals()
 
-    -- Draw stats rows in "round / total" format
+    -- Draw stats rows (no headers, K/M notation, skip kills)
     for _, stat in ipairs(stats_order) do
+        if stat == "kills" then goto continue end
         local round_val = bucket[stat] or 0
         local total_val = totals[stat] or 0
 
-        -- Label
-        WindowText(win, "stats_font", stats_labels[stat], x, y, 0, 0, COLOR_LABEL)
+        -- Label (compact version)
+        WindowText(win, "stats_font", stats_labels_compact[stat], x, y, 0, 0, COLOR_LABEL)
 
-        -- Build the value string: "round / total"
-        local round_str = format_number(round_val)
-        local slash_str = " / "
-        local total_str = format_number(total_val)
+        -- Now value (left-aligned in column, K/M format)
+        WindowText(win, "stats_font", format_number_short(round_val), col1_x, y, 0, 0, get_stat_color(stat, round_val))
 
-        -- Calculate positions
-        local round_width = WindowTextWidth(win, "stats_font", round_str)
-        local slash_width = WindowTextWidth(win, "stats_font", slash_str)
-
-        -- Draw round value
-        WindowText(win, "stats_font", round_str, val_x, y, 0, 0, get_stat_color(stat, round_val))
-        -- Draw slash
-        WindowText(win, "stats_font", slash_str, val_x + round_width, y, 0, 0, COLOR_SLASH)
-        -- Draw total value
-        WindowText(win, "stats_font", total_str, val_x + round_width + slash_width, y, 0, 0, get_stat_color(stat, total_val))
+        -- Sum value (left-aligned in column, K/M format)
+        WindowText(win, "stats_font", format_number_short(total_val), col2_x, y, 0, 0, get_stat_color(stat, total_val))
 
         y = y + line_height
+        ::continue::
     end
 end
 
